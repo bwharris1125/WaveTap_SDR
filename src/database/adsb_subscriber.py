@@ -3,11 +3,19 @@ import json
 import logging
 import sys
 import time
+import uuid
 
 import websockets
 
+from database.adsb_db import DBWorker
+
 
 class ADSBSubscriber:
+    def setup_db(self, db_path="src/database/adsb.db"):
+        """Initialize DBWorker for database operations."""
+        self.db_worker = DBWorker(db_path)
+        self.db_worker.start()
+        self.active_sessions = {}  # {icao: session_id}
     """
     ADSBSubscriber connects to a WebSocket publisher, receives ADS-B aircraft
     data, and maintains a rolling in-memory dictionary of aircraft data on the
@@ -41,9 +49,56 @@ class ADSBSubscriber:
     # TODO write to database
     async def save_to_db(self):
         """
-        Placeholder for saving aircraft_data to a database.
+        Save current aircraft_data to the database, including velocity fields and session tracking.
         """
-        pass
+        for icao, entry in self.aircraft_data.items():
+            # Save to aircraft table
+            self.db_worker.enqueue((
+                "upsert_aircraft",
+                icao,
+                entry.get("callsign"),
+                entry.get("first_seen"),
+                entry.get("last_update")
+            ))
+            # Session tracking
+            session_id = self.active_sessions.get(icao)
+            if not session_id:
+                session_id = str(uuid.uuid4())
+                self.active_sessions[icao] = session_id
+                self.db_worker.enqueue((
+                    "start_session",
+                    session_id,
+                    icao,
+                    entry.get("last_update")
+                ))
+            else:
+                self.db_worker.enqueue((
+                    "end_session",
+                    session_id,
+                    entry.get("last_update")
+                ))
+            # Save to path table
+            position = entry.get("position")
+            velocity = entry.get("velocity")
+            if position:
+                # Compose ts_iso if needed
+                ts = entry.get("last_update")
+                import datetime
+                ts_iso = datetime.datetime.utcfromtimestamp(ts).isoformat() if ts else None
+                self.db_worker.enqueue((
+                    "insert_path",
+                    session_id,
+                    icao,
+                    ts,
+                    ts_iso,
+                    position.get("lat"),
+                    position.get("lon"),
+                    entry.get("altitude"),
+                    velocity.get("speed") if velocity else None,
+                    velocity.get("track") if velocity else None,
+                    velocity.get("vertical_rate") if velocity else None,
+                    velocity.get("type") if velocity else None
+                ))
 
 
 def print_aircraft_data(collector, interval: int = 3) -> None:
@@ -78,9 +133,14 @@ def print_aircraft_data(collector, interval: int = 3) -> None:
 async def main():
     uri = "ws://127.0.0.1:8443" # TODO make configurable
     subscriber = ADSBSubscriber(uri)
+    subscriber.setup_db("adsb.db")
+    async def periodic_db_save():
+        while True:
+            await subscriber.save_to_db()
+            await asyncio.sleep(10)
     await asyncio.gather(
         subscriber.connect_and_listen(),
-        # print_aircraft_data(subscriber) # only needed for
+        periodic_db_save()
     )
 
 

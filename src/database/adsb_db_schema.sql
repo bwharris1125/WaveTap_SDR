@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS flight_session (
 
 CREATE INDEX IF NOT EXISTS idx_flight_session_aircraft ON flight_session(aircraft_icao);
 
+
 CREATE TABLE IF NOT EXISTS path (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT,
@@ -24,6 +25,10 @@ CREATE TABLE IF NOT EXISTS path (
     lat REAL,
     lon REAL,
     alt REAL,
+    velocity REAL,     -- ground speed (knots or m/s)
+    track REAL,        -- heading/track angle (degrees)
+    vertical_rate REAL,-- vertical rate (ft/min or m/s)
+    type TEXT,         -- velocity type (e.g., 'airborne', 'surface')
     FOREIGN KEY (session_id) REFERENCES flight_session(id),
     FOREIGN KEY (icao) REFERENCES aircraft(icao)
 );

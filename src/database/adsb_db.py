@@ -131,10 +131,14 @@ class DBWorker(threading.Thread):
                 (end_ts, session_id)
             )
         elif typ == "insert_path":
-            _, session_id, icao, ts, ts_iso, lat, lon, alt = task
+            # Support new columns: velocity, track, vertical_rate, type
+            (
+                _, session_id, icao, ts, ts_iso, lat, lon, alt,
+                velocity, track, vertical_rate, vtype
+            ) = task
             cur.execute(
-                "INSERT INTO path (session_id, icao, ts, ts_iso, lat, lon, alt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (session_id, icao, ts, ts_iso, lat, lon, alt)
+                "INSERT INTO path (session_id, icao, ts, ts_iso, lat, lon, alt, velocity, track, vertical_rate, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (session_id, icao, ts, ts_iso, lat, lon, alt, velocity, track, vertical_rate, vtype)
             )
         else:
             logging.warning("Unknown DB task: %s", task)

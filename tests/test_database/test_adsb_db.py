@@ -39,7 +39,7 @@ def test_dbworker_processes_tasks(tmp_path):
         session_id = str(uuid.uuid4())
         worker.enqueue(("start_session", session_id, icao, ts))
         iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
-        worker.enqueue(("insert_path", session_id, icao, ts, iso, 32.0, -96.0, 1000.0))
+        worker.enqueue(("insert_path", session_id, icao, ts, iso, 32.0, -96.0, 1000.0, None, None, None, None))
         worker.enqueue(("end_session", session_id, ts + 10.0))
 
         # wait for DB to be populated (timeout after ~5s)
