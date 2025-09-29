@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 import uuid
@@ -11,7 +12,16 @@ from database.adsb_db import DBWorker
 
 
 class ADSBSubscriber:
-    def setup_db(self, db_path="src/database/adsb.db"):
+    def setup_db(self, db_path=None):
+        """Initialize DBWorker for database operations."""
+        if db_path is None:
+            db_path = os.environ.get(
+                "ADSB_DB_PATH",
+                "src/database/adsb.db"
+            )
+        self.db_worker = DBWorker(db_path)
+        self.db_worker.start()
+        self.active_sessions = {}  # {icao: session_id}
         """Initialize DBWorker for database operations."""
         self.db_worker = DBWorker(db_path)
         self.db_worker.start()
@@ -35,23 +45,39 @@ class ADSBSubscriber:
         # TODO HANDLE FAILED CONNECTIONS AND DISCONNECTIONS GRACEFULLY
         """
         async with websockets.connect(self.uri) as ws:
-            logging.info(f"Connected to publisher at {self.uri}")
+            logging.info(
+                f"Connected to publisher at {self.uri}"
+            )
             while True:
                 data = await ws.recv()
                 try:
                     received = json.loads(data)
+                    # logging.debug(f"Raw data received: {received}")
                     if isinstance(received, dict):
                         self.aircraft_data = received
-                        logging.debug(f"Updated aircraft_data with {len(received)} entries.")
+                        logging.debug(
+                            f"Updated aircraft_data with {len(received)} entries."
+                        )
+                    else:
+                        logging.warning(
+                            f"Received non-dict data: {type(received)}"
+                        )
                 except Exception as e:
-                    logging.warning(f"Failed to decode message: {e}")
+                    logging.warning(
+                        f"Failed to decode message: {e}"
+                    )
 
     # TODO write to database
     async def save_to_db(self):
         """
         Save current aircraft_data to the database, including velocity fields and session tracking.
         """
+        if not self.aircraft_data:
+            logging.warning("No aircraft data to save to database.")
         for icao, entry in self.aircraft_data.items():
+            logging.debug(
+                f"Saving aircraft {icao} to database: {entry}"
+            )
             # Save to aircraft table
             self.db_worker.enqueue((
                 "upsert_aircraft",
@@ -81,7 +107,6 @@ class ADSBSubscriber:
             position = entry.get("position")
             velocity = entry.get("velocity")
             if position:
-                # Compose ts_iso if needed
                 ts = entry.get("last_update")
                 import datetime
                 ts_iso = datetime.datetime.utcfromtimestamp(ts).isoformat() if ts else None
@@ -99,13 +124,19 @@ class ADSBSubscriber:
                     velocity.get("vertical_rate") if velocity else None,
                     velocity.get("type") if velocity else None
                 ))
+                logging.debug(
+                    f"Inserted path for {icao} at {ts_iso}"
+                )
 
 
 def print_aircraft_data(collector, interval: int = 3) -> None:
     last_lines = 0
     while True:
         # Table header
-        header = f"{'ICAO':<8} {'CALLSIGN':<10} {'LAT':>10} {'LON':>10} {'ALT':>8}"
+        header = (
+            f"{'ICAO':<8} {'CALLSIGN':<10} "
+            f"{'LAT':>10} {'LON':>10} {'ALT':>8}"
+        )
         output_lines = [header]
         # Table rows
         for icao, entry in collector.aircraft_data.items():
@@ -131,13 +162,32 @@ def print_aircraft_data(collector, interval: int = 3) -> None:
 
 
 async def main():
-    uri = "ws://127.0.0.1:8443" # TODO make configurable
-    subscriber = ADSBSubscriber(uri)
-    subscriber.setup_db("adsb.db")
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="ADS-B Subscriber Service"
+    )
+    parser.add_argument(
+        "--uri",
+        type=str,
+        default=os.environ.get("ADSB_WS_URI", "ws://127.0.0.1:8443"),
+        help="WebSocket URI for publisher"
+    )
+    parser.add_argument(
+        "--db",
+        type=str,
+        default=os.environ.get("ADSB_DB_PATH", "src/database/adsb.db"),
+        help="Path to SQLite database file"
+    )
+    args = parser.parse_args()
+
+    subscriber = ADSBSubscriber(args.uri)
+    subscriber.setup_db(args.db)
+
     async def periodic_db_save():
         while True:
             await subscriber.save_to_db()
             await asyncio.sleep(10)
+
     await asyncio.gather(
         subscriber.connect_and_listen(),
         periodic_db_save()
@@ -146,4 +196,7 @@ async def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Subscriber stopped by user.")
