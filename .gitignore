@@ -37,6 +37,7 @@ Thumbs.db
 .coverage
 .tox/
 htmlcov/
+.pytest_cache/
 
 # Logs
 *.log
