@@ -1,14 +1,22 @@
+
 # Core SDR dependencies
 pyrtlsdr>=0.2.9
 numpy>=1.21.0
-
-# Data visualization
 matplotlib>=3.5.0
+pyModeS>=2.10.0
 
-# Development and testing (optional)
+# Web and API frameworks (if used)
+flask>=2.0.0
+fastapi>=0.95.0
+httpx>=0.24.0
+
+# Development and testing
 pytest>=6.0.0
 pytest-cov>=2.12.0
 
-# Code quality (optional)
+# Code quality
 ruff>=0.1.0
 black>=22.0.0
+isort>=5.10.0
+mypy>=1.0.0
+setuptools>=65.0.0

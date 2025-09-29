@@ -68,6 +68,7 @@ source .venv/bin/activate
 
 echo "Upgrading pip and installing Python packages..."
 pip install --upgrade pip
-pip install mypy isort ruff pytest pytest-cov flask pyrtlsdr setuptools pyModeS
+pip install --upgrade pip
+pip install -r requirements.txt
 
 echo "Setup complete. RTL-SDR development environment is ready."
