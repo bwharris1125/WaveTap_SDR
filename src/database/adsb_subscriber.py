@@ -73,7 +73,7 @@ class ADSBSubscriber:
         Save current aircraft_data to the database, including velocity fields and session tracking.
         """
         if not self.aircraft_data:
-            logging.warning("No aircraft data to save to database.")
+            logging.debug("No aircraft data to save to database.")
         for icao, entry in self.aircraft_data.items():
             logging.debug(
                 f"Saving aircraft {icao} to database: {entry}"
@@ -109,7 +109,10 @@ class ADSBSubscriber:
             if position:
                 ts = entry.get("last_update")
                 import datetime
-                ts_iso = datetime.datetime.utcfromtimestamp(ts).isoformat() if ts else None
+                ts_iso = (
+                    datetime.datetime.fromtimestamp(ts, datetime.UTC).isoformat()
+                    if ts else None
+                )
                 self.db_worker.enqueue((
                     "insert_path",
                     session_id,
