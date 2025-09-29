@@ -3,7 +3,7 @@ import sys
 import threading
 import time
 
-from sdr_cap.adsb_publisher import ADSBClient
+from adsb_publisher import ADSBClient
 
 
 # TODO: should this be part of the class?
@@ -11,8 +11,9 @@ def print_aircraft_data(client, interval: int = 3) -> None:
     last_lines = 0
     while True:
         # Table header
-        header = f"{'ICAO':<8} {'CALLSIGN':<10} {'LAT':>10} {'LON':>10} {'ALT':>8}"
+        header = f"{'ICAO':<8} {'CALLSIGN':<10} {'LAT':>10} {'LON':>10} {'ALT':>8} {'LAST SEEN (s)':>15}"
         output_lines = [header]
+        now = time.time()
         # Table rows
         for icao, entry in client.aircraft_data.items():
             callsign = str(entry.get("callsign", ""))
@@ -20,7 +21,12 @@ def print_aircraft_data(client, interval: int = 3) -> None:
             altitude = str(entry.get("altitude", ""))
             lat = f"{position.get('lat', ''):.5f}" if position and position.get("lat") is not None else ""
             lon = f"{position.get('lon', ''):.5f}" if position and position.get("lon") is not None else ""
-            output_lines.append(f"{icao:<8} {callsign:<10} {lat:>10} {lon:>10} {altitude:>8}")
+            last_update = entry.get("last_update", None)
+            if last_update is not None:
+                elapsed = f"{now - last_update:.1f}"
+            else:
+                elapsed = "N/A"
+            output_lines.append(f"{icao:<8} {callsign:<10} {lat:>10} {lon:>10} {altitude:>8} {elapsed:>15}")
         # Move cursor up to overwrite previous output
         if last_lines:
             sys.stdout.write(f"\033[{last_lines}F")
