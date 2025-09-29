@@ -4,6 +4,8 @@ This document captures prioritized recommendations and concrete steps to evolve 
 
 Each item includes: goal summary, files to change, acceptance criteria, and effort estimate.
 
+[ ] Update C4 Diagrams
+
 ---
 
 ## 1) Persistor interface + JSON raw storage (in-progress)
