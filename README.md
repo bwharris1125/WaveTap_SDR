@@ -49,16 +49,22 @@ To set up the Python virtual environment and install required libraries:
    bash dev-env/init_env.sh
    ```
 
+
 ### Installed Libraries
-The setup script will install the following Python libraries in the virtual environment:
-- `mypy` (static type checking)
-- `isort` (import sorting)
-- `ruff` (linting and code quality)
+The setup script and requirements.txt will install the following Python libraries in the virtual environment:
+- `pyrtlsdr` (RTL-SDR library for software defined radio)
+- `pyModeS` (ADS-B message decoding)
+- `numpy` (numerical computing)
+- `matplotlib` (data visualization)
+- `flask` (web application framework)
+- `fastapi` (web API framework)
+- `httpx` (HTTP client for external API communication)
 - `pytest` (testing framework)
 - `pytest-cov` (test coverage)
-- `fastapi` (web application framework)
-- `httpx` (HTTP client for external API communication)
-- `pyrtlsdr` (RTL-SDR library for software defined radio)
+- `ruff` (linting and code quality)
+- `black` (code formatting)
+- `isort` (import sorting)
+- `mypy` (static type checking)
 - `setuptools` (package development and distribution tools)
 
 ## RTL-SDR Setup

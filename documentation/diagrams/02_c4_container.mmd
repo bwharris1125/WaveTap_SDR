@@ -10,21 +10,21 @@ System_Boundary(wt, "WaveTap") {
   Container(ui, "Local UI / Dashboard", "Python/TKinter", "Tables, maps, streams")
   Container(api, "API Gateway", "FastAPI/Express", "REST + WebSocket aggregation")
   Container(arb, "Coordinator / Arbiter", "Python", "Manages tuning, decoding, events")
-  Container(sdr_cap, "SDR Capture Service", "Python + pyrtlsdr", "Owns RTL-SDR; streams IQ")
+  Container(sdr_cap, "SDR Capture Service", "Python + dump1090", "Owns RTL-SDR; streams IQ")
   ContainerDb(db, "Storage Database", "SQL", "Historical tracks, logs")
 }
 
 System_Boundary(hw, "Hardware & Libraries") {
   System_Ext(sdr, "USB RTL-SDR", "Software Defined Radio (SDR)")
-  System_Ext(pymodes, "pyModeS", "Library for decoding ADS-B signals")
-  System_Ext(pyrtlsdr, "pyRTLSDR", "Library for interfacing with RTL-SDR")
+  System_Ext(pymodes, "pyModeS", "Library for decoding ADS-B messages")
+  System_Ext(dump1090, "dump1090", "Library for decoding 1090 MHz aviation signals")
 }
 
 Rel(aircraft, sdr, "ADS-B and VHF")
 Rel(rf_source, sdr, "RF Signals")
 Rel(sdr, sdr_cap, "USB Connection")
 Rel(sdr_cap, pymodes, "Uses")
-Rel(sdr_cap, pyrtlsdr, "Uses")
+Rel(sdr_cap, dump1090, "Uses")
 Rel(user, ui, "Uses")
 Rel(ui, api, "Uses")
 Rel(api, arb, "Requests tuning")

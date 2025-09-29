@@ -44,3 +44,8 @@ htmlcov/
 # Other
 *.sqlite3
 *.db
+
+# Ignore sqlite artifacts created in src/database during tests/dev runs
+*.db
+*.db-wal
+*.db-shm
