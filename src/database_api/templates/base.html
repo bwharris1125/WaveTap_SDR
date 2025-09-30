@@ -50,7 +50,7 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="{{ url_for('home') }}">WaveTap Control</a>
+    <a class="navbar-brand" href="{{ url_for('home') }}">WaveTap Control</a>
         <button
             class="navbar-toggler"
             type="button"
@@ -64,11 +64,11 @@
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav ms-auto">
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('live_data') }}">Live ADS-B</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('historical_data') }}">Historical</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('icao_lookup') }}">ICAO Lookup</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('flight_paths') }}">Flight Paths</a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('live_map') }}">Live Map</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('adsb.dashboard') }}">ADS-B</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('vhf_dashboard') }}">VHF Radio</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('fm_dashboard') }}">FM Radio</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('am_dashboard') }}">AM Radio</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('other_dashboard') }}">Other Signals</a></li>
             </ul>
         </div>
     </div>

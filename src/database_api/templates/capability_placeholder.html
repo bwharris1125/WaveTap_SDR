@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h1 class="card-title">{{ capability }}</h1>
+                <p class="card-text text-secondary">{{ description }}</p>
+                {% if roadmap %}
+                <h5 class="mt-4">Roadmap</h5>
+                <ul class="list-group list-group-flush">
+                    {% for item in roadmap %}
+                    <li class="list-group-item bg-transparent text-light border-secondary">{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                <p class="mt-4 text-secondary">Have ideas or requirements? Share them with the WaveTap team to help shape this capability.</p>
+                <a class="btn btn-primary" href="{{ url_for('home') }}">Back to Control Center</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -5,7 +5,7 @@
         <h1 class="mb-0">Live ADS-B Data</h1>
         <p class="text-secondary mb-0">Showing aircraft observed in the last {{ window_minutes }} minutes.</p>
     </div>
-    <a class="btn btn-outline-light" href="{{ url_for('live_data') }}">Refresh</a>
+        <a class="btn btn-outline-light" href="{{ url_for('adsb.live_data') }}">Refresh</a>
 </div>
 {% if aircraft %}
 <div class="table-responsive">
@@ -29,7 +29,7 @@
             <tr>
                 <td>{{ ac.icao }}</td>
                 <td>{{ (ac.callsign or "&nbsp;")|safe }}</td>
-        <td>{{ ac.first_seen or "" }}</td>
+                <td>{{ ac.first_seen or "" }}</td>
                 <td>{{ ac.position.lat|format_coord }}</td>
                 <td>{{ ac.position.lon|format_coord }}</td>
                 <td>{{ ac.position.altitude|default("", true) }}</td>

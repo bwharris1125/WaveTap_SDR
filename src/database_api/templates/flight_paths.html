@@ -5,7 +5,7 @@
         <h1 class="mb-0">Recent Flight Paths</h1>
         <p class="text-secondary mb-0">Latest recorded points across all aircraft.</p>
     </div>
-    <a class="btn btn-outline-light" href="{{ url_for('flight_paths') }}">Refresh</a>
+    <a class="btn btn-outline-light" href="{{ url_for('adsb.flight_paths') }}">Refresh</a>
 </div>
 {% if paths %}
 <div class="table-responsive">

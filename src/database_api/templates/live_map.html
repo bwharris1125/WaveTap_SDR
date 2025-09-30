@@ -38,7 +38,7 @@
     "refresh_interval": refresh_interval,
     "default_center": default_center,
     "default_zoom": default_zoom,
-    "api_endpoint": url_for('api_aircraft'),
+    "api_endpoint": url_for('adsb.api_aircraft'),
     "initial_aircraft": aircraft
 }|tojson }}
 </script>
@@ -52,7 +52,7 @@
         refresh_interval: 5,
         default_center: [0, 0],
         default_zoom: 2,
-    api_endpoint: '/api/aircraft',
+        api_endpoint: '/adsb/api/aircraft',
         initial_aircraft: []
     };
     if (configEl && configEl.textContent) {

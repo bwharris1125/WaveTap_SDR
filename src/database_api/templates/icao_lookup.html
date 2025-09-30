@@ -2,7 +2,7 @@
 {% block content %}
 <h1>ICAO Lookup</h1>
 <p class="text-secondary">Search for a specific aircraft by ICAO identifier.</p>
-<form method="get" class="row gy-3 mb-4" action="{{ url_for('icao_lookup') }}">
+<form method="get" class="row gy-3 mb-4" action="{{ url_for('adsb.icao_lookup') }}">
     <div class="col-sm-6 col-md-4">
         <label class="form-label" for="icao">ICAO Address</label>
         <input
