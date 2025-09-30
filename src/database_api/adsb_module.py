@@ -111,8 +111,7 @@ def _format_timestamp(ts: Optional[float]) -> Optional[str]:
 
 
 def _filter_recent_aircraft(seconds: int = DEFAULT_LIVE_WINDOW_SECONDS) -> List[Dict[str, object]]:
-    cutoff = time.time() - seconds
-    return [ac for ac in get_aircraft_data() if ac.get("last_seen_epoch") and ac["last_seen_epoch"] >= cutoff]
+    return get_recent_aircraft(seconds)
 
 
 def _query_path_history(limit: int = 200) -> List[sqlite3.Row]:
@@ -353,10 +352,24 @@ def get_aircraft_data() -> List[Dict[str, object]]:
     return [_serialize_aircraft(row) for row in _query_all_aircraft()]
 
 
+def get_recent_aircraft(seconds: int = DEFAULT_LIVE_WINDOW_SECONDS) -> List[Dict[str, object]]:
+    """Return aircraft seen within the specified number of seconds."""
+
+    cutoff = time.time() - seconds
+    return [
+        aircraft
+        for aircraft in get_aircraft_data()
+        if aircraft.get("last_seen_epoch") and aircraft["last_seen_epoch"] >= cutoff
+    ]
+
+
 @adsb_bp.route("/api/aircraft", methods=["GET"])
 def api_aircraft():
     """Return all recorded aircraft data."""
-    return jsonify(get_aircraft_data())
+    window = request.args.get("window", type=int)
+    if window is None:
+        window = DEFAULT_LIVE_WINDOW_SECONDS
+    return jsonify(get_recent_aircraft(window))
 
 
 @adsb_bp.route("/api/aircraft/<icao>", methods=["GET"])
@@ -418,7 +431,7 @@ def live_map():
     return render_template(
         "live_map.html",
         title="Live Aircraft Map",
-        aircraft=aircraft,
+        aircraft=get_recent_aircraft(),
         refresh_interval=5,
         default_center=center,
         default_zoom=DEFAULT_MAP_ZOOM,
