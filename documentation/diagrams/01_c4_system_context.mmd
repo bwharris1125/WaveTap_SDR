@@ -1,32 +1,29 @@
 C4Context
-title "WaveTap - System Context"
+title "WaveTap - System Context (Current & Planned)"
 
-System_Boundary(b1, "WaveTap") {
-    Boundary(b2, "Hardware") {
-        System_Ext(sdr, "USB RTL-SDR", "Hardware for capturing RF signals")
-    }
-    System(ui_service, "UI Service", "Provides user interface for data visualization")
-    SystemDb(data_storage, "Data Storage Service", "Stores decoded data for analysis")
-    System(wavetap, "WaveTap SDR Platform", "Processes and decodes RF signals")
+Person(user, "Operations Analyst", "Browses dashboards and manages SDR modules")
+
+System_Ext(aircraft, "Aircraft", "Broadcast ADS-B frames on 1090 MHz")
+System_Ext(rtlsdr, "USB RTL-SDR", "Captures RF energy from antennas")
+System_Ext(dump1090, "dump1090 Decoder", "Transforms Mode-S bits into TCP stream")
+
+System_Boundary(wavetap, "WaveTap Platform") {
+    System(control_center, "WaveTap Control Center", "Flask UI + REST endpoints for ADS-B telemetry")
+    System(arbiter, "Arbiter Service", "Flask control plane for registering and coordinating SDR modules")
+    SystemDb(data_store, "Telemetry Store", "SQLite database shared across services")
 }
 
-Boundary(b0, "Radio Frequencies") {
-    System_Ext(fm_radio, "Other Radio", "Broadcasts RF Signals")
-    System_Ext(adsb_transmitter, "ADS-B Transmitter", "Broadcasts Aircraft Data")
-    System_Ext(vhf_radio, "VHF Radio", "Broadcasts ATC Comms")
-}
+System_Ext(future_voice, "VHF Voice Capture (Planned)", "Roadmap: aviation-band audio capture, transcription")
+System_Ext(future_broadcast, "Broadcast Analytics (Planned)", "Roadmap: FM/AM demodulation and analytics")
 
-Rel(fm_radio, sdr, "Broadcasts signals to", "down")
-Rel(adsb_transmitter, sdr, "Broadcasts signals to", "down")
-Rel(vhf_radio, sdr, "Broadcasts signals to", "down")
-Rel(sdr, wavetap, "Captures signals for", "right")
-Rel(wavetap, data_storage, "Stores decoded data in", "down")
-Rel(data_storage, ui_service, "Provides data to", "right")
-Rel(ui_service, wavetap, "Interacts with", "up", "HTTPS/WebSocket")
-
-%%UpdateElementStyle(ui_service, $fontColor="red", $bgColor="grey", $borderColor="red")
-%% UpdateRelStyle(ui_service, wavetap, $textColor="blue", $lineColor="blue", $offsetX="5")
-%% UpdateRelStyle(sdr, wavetap, $textColor="blue", $lineColor="blue", $offsetY="-10")
-%% UpdateRelStyle(data_storage, ui_service, $textColor="blue", $lineColor="blue", $offsetY="-40", $offsetX="-50")
-
-%% UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+Rel(aircraft, rtlsdr, "Broadcast RF")
+Rel(rtlsdr, dump1090, "USB IQ sampled")
+Rel(dump1090, control_center, "Mode-S messages over TCP 30002 via publisher")
+Rel(control_center, data_store, "Persists aircraft telemetry")
+Rel(user, control_center, "Explores dashboards & APIs", "HTTPS/WebSocket")
+Rel(user, arbiter, "Manages module lifecycle", "HTTPS/JSON")
+Rel(arbiter, control_center, "Coordinates module state")
+Rel(future_voice, arbiter, "Future module registration")
+Rel(future_broadcast, arbiter, "Future module registration")
+Rel(future_voice, control_center, "Planned data ingest & dashboards")
+Rel(future_broadcast, control_center, "Planned data ingest & dashboards")

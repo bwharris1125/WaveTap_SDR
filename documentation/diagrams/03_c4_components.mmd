@@ -1,38 +1,52 @@
 C4Component
-title "WaveTap - Components"
+title "WaveTap - Core Components & Roadmap"
 
-
-Container_Boundary(gui, "User Interface") {
-  Component(py_ui, "Tkinter UI", "Web Socket", "UI &  Data Display")
+Container_Boundary(pub, "adsb-publisher (Python)") {
+  Component(ad_client, "ADSBClient", "pyModeS TCP client", "Reads Mode-S frames from dump1090 feed")
+  Component(publisher, "ADSBPublisher", "asyncio WebSocket", "Aggregates aircraft state and broadcasts JSON")
 }
 
-Container_Boundary(gateway, "API Gateway") {
-  Component(api, "API Gateway", "REST/WebSocket")
+Container_Boundary(sub, "adsb-subscriber (Python)") {
+  Component(ws_listener, "WebSocketListener", "asyncio", "Maintains live snapshot from publisher")
+  Component(session_tracker, "SessionTracker", "In-memory state", "Tracks aircraft sessions & deduplicates updates")
+  Component(db_worker, "DBWorker", "Queue consumer", "Persists aircraft, sessions, and flight paths into SQLite")
 }
 
-Container_Boundary(cap, "SDR Capture Service") {
-  Component(dev_ctrl, "DeviceController", "Python", "Manages RTL-SDR")
-  Component(stat_mon, "StatusMonitor", "Python", "Health, metrics, overload detection")
-  Component(streamer, "IQStreamer", "Web Socket", "Pushes IQ frames to bus")
+Container_Boundary(api, "WaveTap API (Flask)") {
+  Component(adsb_bp, "ADS-B Blueprint", "Flask Blueprint", "Dashboard routes, REST endpoints, historical lookups")
+  Component(ui_templates, "Templates", "Jinja", "Renders control center cards and capability placeholders")
 }
 
-Container_Boundary(coord, "Coordinator / Arbiter") {
-  Component(sdr_dec, "SDRDecoder", "Logic", "Decodes IQ frames from bus")
-  Component(notify, "EventPublisher", "Bus Client", "Publishes tuning events")
-  Component(tun_mgr, "TuningManager", "Logic", "Validates & serializes tuning changes")
+Container_Boundary(arb, "Arbiter Service (Flask)") {
+  Component(arb_core, "Arbiter", "Controller", "Registers modules, switches active module, exposes health")
+  Component(managed_mod, "ManagedModule", "Entity", "Tracks module metadata and activation timestamps")
 }
 
-Container_Boundary(database, "Storage Database") {
-  ComponentDb(db, "Database", "SQL", "Stores historical data and logs")
+Container_Boundary(ui, "Desktop Toolkit") {
+  Component(tk_dashboard, "Tkinter Dashboard", "Tkinter", "Local situational awareness dashboard (manual launch)")
 }
 
-Rel(py_ui, api, "GET /status, WS /events", "JSON")
-Rel(api, tun_mgr, "POST /tune", "JSON")
-Rel(tun_mgr, dev_ctrl, "Sends tuning commands")
-Rel(dev_ctrl, streamer, "Configures RF parameters")
-Rel(streamer, sdr_dec, "Streams IQ frames to decoder", "IQ frames")
-Rel(sdr_dec, db, "Persists decoded tracks and logs", "SQL")
-Rel(db, api, "Provides historical data", "SQL")
-Rel(stat_mon, api, "Exposes health/metrics", "Pull/Push")
-Rel(sdr_dec, notify, "Publishes detection events", "Bus/WebSocket")
-Rel(tun_mgr, notify, "Publishes tuning events", "Bus/WebSocket")
+ComponentDb(sqlite, "Telemetry Database", "SQLite", "Aircraft, session, and path tables shared by services")
+
+Container_Boundary(future, "Future Signal Pipelines (Planned)") {
+  Component_Ext(vhf, "VHF Voice Pipeline", "TBD", "Aviation-band audio capture, transcription & archival")
+  Component_Ext(fm, "FM Broadcast Pipeline", "TBD", "Broadcast demodulation, RDS metadata, audio analytics")
+  Component_Ext(am, "AM Broadcast Pipeline", "TBD", "Medium-wave monitoring and event detection")
+}
+
+Rel(ad_client, publisher, "Feeds decoded frames")
+Rel(publisher, ws_listener, "Streams aircraft JSON")
+Rel(ws_listener, session_tracker, "Updates active snapshot")
+Rel(session_tracker, db_worker, "Queues persistence jobs")
+Rel(db_worker, sqlite, "Writes telemetry", "SQL")
+Rel(adsb_bp, sqlite, "Queries historical data", "SQL")
+Rel(tk_dashboard, adsb_bp, "Fetches summaries", "HTTP/JSON")
+Rel(arb_core, managed_mod, "Maintains registry")
+Rel(arb_core, publisher, "Activates/pauses module", "HTTP")
+Rel(arb_core, db_worker, "Coordinates persistence cadence", "HTTP")
+Rel(vhf, arb_core, "Planned module registration")
+Rel(fm, arb_core, "Planned module registration")
+Rel(am, arb_core, "Planned module registration")
+Rel(vhf, adsb_bp, "Planned dashboards & APIs")
+Rel(fm, adsb_bp, "Planned dashboards & APIs")
+Rel(am, adsb_bp, "Planned dashboards & APIs")

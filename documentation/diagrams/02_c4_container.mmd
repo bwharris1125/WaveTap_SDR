@@ -1,40 +1,37 @@
 C4Container
-title "WaveTap - Container View"
+title "WaveTap - Container View (Current & Planned)"
 
-Person(user, "Client User", "Browser / Dashboard / CLI")
+Person(user, "Client Operator", "Uses dashboards and module console")
 
-System_Ext(aircraft, "Aircraft", "Broadcasts ADS-B and Voice Signals")
-System_Ext(rf_source, "RF Source", "Broadcasts RF Signals (ex. FM Radio)")
+System_Ext(rtlsdr, "USB RTL-SDR", "Hardware front-end")
+System_Ext(dump1090, "dump1090 Decoder", "Feeds Mode-S frames over TCP 30002")
 
-System_Boundary(wt, "WaveTap") {
-  Container(ui, "Local UI / Dashboard", "Python/TKinter", "Tables, maps, streams")
-  Container(api, "API Gateway", "FastAPI/Express", "REST + WebSocket aggregation")
-  Container(arb, "Coordinator / Arbiter", "Python", "Manages tuning, decoding, events")
-  Container(sdr_cap, "SDR Capture Service", "Python + dump1090", "Owns RTL-SDR; streams IQ")
-  ContainerDb(db, "Storage Database", "SQL", "Historical tracks, logs")
+System_Boundary(wavetap, "WaveTap Stack") {
+  Container(publisher, "adsb-publisher", "Python + websockets", "Pulls dump1090 feed and publishes aircraft JSON")
+  Container(subscriber, "adsb-subscriber", "Python asyncio", "Consumes WebSocket snapshots and queues DB writes")
+  Container(api, "WaveTap API", "Flask + Jinja", "Serves dashboards and REST endpoints for ADS-B data")
+  Container(arbiter, "Arbiter Service", "Flask", "Registers SDR modules and exposes orchestration APIs")
+  ContainerDb(sqlite, "Telemetry Database", "SQLite", "Stores aircraft history and path samples")
+  Container(ui, "Desktop Dashboard", "Python/Tkinter", "Optional local situational awareness client")
+  Container(future_vhf, "VHF Voice Service (Planned)", "Python SDR", "Future aviation-band audio capture & transcription")
+  Container(future_fm, "FM Broadcast Service (Planned)", "Python SDR", "Future FM analytics & recording")
+  Container(future_am, "AM Broadcast Service (Planned)", "Python SDR", "Future AM monitoring & alerts")
 }
 
-System_Boundary(hw, "Hardware & Libraries") {
-  System_Ext(sdr, "USB RTL-SDR", "Software Defined Radio (SDR)")
-  System_Ext(pymodes, "pyModeS", "Library for decoding ADS-B messages")
-  System_Ext(dump1090, "dump1090", "Library for decoding 1090 MHz aviation signals")
-}
-
-Rel(aircraft, sdr, "ADS-B and VHF")
-Rel(rf_source, sdr, "RF Signals")
-Rel(sdr, sdr_cap, "USB Connection")
-Rel(sdr_cap, pymodes, "Uses")
-Rel(sdr_cap, dump1090, "Uses")
-Rel(user, ui, "Uses")
-Rel(ui, api, "Uses")
-Rel(api, arb, "Requests tuning")
-Rel(arb, sdr_cap, "tuning commands")
-Rel(sdr_cap, arb, "IQ stream")
-Rel(sdr_cap, db, "Persists tracks", "Logs")
-Rel(db, api, "Provides historical data")
-%% Rel(dec_fm, api, "Streams audio frames", "WebSocket")
-%% Rel(api, db, "Reads detected aircraft", "WebSocket")
-%% Rel(sdr_cap, dec_atc, "Voice Stream", "Mp3 stream")
-%% Rel(dec_atc, api, "Streams audio frames", "WebSocket")
-%% Rel(sdr_cap, dec_adsb, "Streams IQ data")
-%% Rel(sdr_cap, dec_fm, "Streams audio frames", "WebSocket")
+Rel(rtlsdr, dump1090, "USB IQ samples")
+Rel(dump1090, publisher, "Mode-S messages", "TCP 30002")
+Rel(publisher, subscriber, "Aircraft JSON stream", "WebSocket 8443")
+Rel(subscriber, sqlite, "Persist telemetry", "SQLite writes")
+Rel(api, sqlite, "Query aircraft data", "SQL")
+Rel(user, api, "View dashboards & endpoints", "HTTPS")
+Rel(user, ui, "Launch desktop tooling")
+Rel(ui, api, "Fetch summaries", "HTTP/JSON")
+Rel(user, arbiter, "Manage modules", "HTTPS/JSON")
+Rel(arbiter, publisher, "Activate/deactivate publisher", "Internal HTTP")
+Rel(arbiter, subscriber, "Coordinate persistence", "Internal HTTP")
+Rel(future_vhf, arbiter, "Planned module registration")
+Rel(future_fm, arbiter, "Planned module registration")
+Rel(future_am, arbiter, "Planned module registration")
+Rel(future_vhf, api, "Planned dashboards & APIs")
+Rel(future_fm, api, "Planned dashboards & APIs")
+Rel(future_am, api, "Planned dashboards & APIs")
