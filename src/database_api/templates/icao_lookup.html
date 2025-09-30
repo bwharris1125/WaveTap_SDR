@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>ICAO Lookup</h1>
+<p class="text-secondary">Search for a specific aircraft by ICAO identifier.</p>
+<form method="get" class="row gy-3 mb-4" action="{{ url_for('adsb.icao_lookup') }}">
+    <div class="col-sm-6 col-md-4">
+        <label class="form-label" for="icao">ICAO Address</label>
+        <input
+            class="form-control"
+            type="text"
+            id="icao"
+            name="icao"
+            value="{{ query or '' }}"
+            placeholder="ABC123"
+            minlength="3"
+            maxlength="6"
+            pattern="[0-9A-Fa-f]{3,6}"
+            required
+        />
+    </div>
+    <div class="col-auto align-self-end">
+        <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+</form>
+{% if result is not none %}
+    {% if result.error %}
+        <div class="alert alert-warning" role="alert">{{ result.error }}</div>
+    {% else %}
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">ICAO {{ result.icao }}</h5>
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Callsign</dt>
+                    <dd class="col-sm-9">{{ result.callsign or 'N/A' }}</dd>
+                    <dt class="col-sm-3">First Seen</dt>
+                    <dd class="col-sm-9">{{ result.first_seen or 'N/A' }}</dd>
+                    <dt class="col-sm-3">Last Seen</dt>
+                    <dd class="col-sm-9">{{ result.last_seen or 'N/A' }}</dd>
+                    <dt class="col-sm-3">Last Known Position</dt>
+                    <dd class="col-sm-9">
+                        {% if result.position %}
+                            {{ result.position.lat|format_coord }}, {{ result.position.lon|format_coord }} at {{ result.position.altitude|default('N/A', true) }} ft
+                        {% else %}
+                            Not available
+                        {% endif %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    {% endif %}
+{% elif query %}
+    <div class="alert alert-info" role="alert">No record found for ICAO {{ query }}.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block head %}
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-sA+z0ym4b58yk7tMTJhjvZxYRegS13Y24g/2F2A7u6A="
+    crossorigin=""
+/>
+<style>
+    #map {
+        height: 70vh;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        border: 1px solid #30363d;
+    }
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+        background: #161b22;
+        color: #e6edf3;
+        border: 1px solid #30363d;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-0">Live Aircraft Map</h1>
+        <p class="text-secondary mb-0">Displaying active aircraft detected by WaveTap in near real time.</p>
+    </div>
+    <div class="text-secondary">Updates every {{ refresh_interval }} seconds</div>
+</div>
+<div id="map"></div>
+{% if not aircraft %}
+<p class="text-secondary mt-3">No aircraft currently visible; the map will update automatically.</p>
+{% endif %}
+<script id="map-config" type="application/json">
+{{ {
+    "refresh_interval": refresh_interval,
+    "default_center": default_center,
+    "default_zoom": default_zoom,
+    "api_endpoint": url_for('adsb.api_aircraft'),
+    "initial_aircraft": aircraft
+}|tojson }}
+</script>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-VI/kjoN1HYvNReRSy4pru+F28prms9GY8S+0mLefPp4=" crossorigin=""></script>
+<script>
+(function() {
+    const configEl = document.getElementById('map-config');
+    let config = {
+        refresh_interval: 5,
+        default_center: [0, 0],
+        default_zoom: 2,
+        api_endpoint: '/adsb/api/aircraft',
+        initial_aircraft: []
+    };
+    if (configEl && configEl.textContent) {
+        try {
+            const parsed = JSON.parse(configEl.textContent);
+            config = Object.assign(config, parsed);
+        } catch (err) {
+            console.warn('Failed to parse map configuration', err);
+        }
+    }
+
+    const refreshInterval = Number.parseFloat(config.refresh_interval || 5) * 1000;
+    const center = Array.isArray(config.default_center) ? config.default_center : [0, 0];
+    const zoom = Number.parseFloat(config.default_zoom || 2);
+
+    const map = L.map('map', {
+        worldCopyJump: true,
+        zoomSnap: 0.5
+    }).setView(center, zoom);
+
+    const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    });
+    tiles.addTo(map);
+
+    const aircraftLayer = L.layerGroup().addTo(map);
+
+    function formatCoord(value) {
+        if (value === null || value === undefined) {
+            return 'N/A';
+        }
+        const num = Number.parseFloat(value);
+        if (Number.isNaN(num)) {
+            return 'N/A';
+        }
+        return num.toFixed(6);
+    }
+
+    function renderAircraft(data) {
+        aircraftLayer.clearLayers();
+        if (!Array.isArray(data) || data.length === 0) {
+            return;
+        }
+
+        const bounds = [];
+        for (const aircraft of data) {
+            const position = aircraft.position || {};
+            if (position.lat === undefined || position.lon === undefined || position.lat === null || position.lon === null) {
+                continue;
+            }
+            const lat = Number.parseFloat(position.lat);
+            const lon = Number.parseFloat(position.lon);
+            if (Number.isNaN(lat) || Number.isNaN(lon)) {
+                continue;
+            }
+            const marker = L.marker([lat, lon]);
+            const callsign = aircraft.callsign && aircraft.callsign.trim() ? aircraft.callsign : 'Unknown';
+            const altitude = position.altitude !== null && position.altitude !== undefined ? `${position.altitude} ft` : 'N/A';
+            const lastSeen = aircraft.last_seen || 'N/A';
+            const firstSeen = aircraft.first_seen || 'N/A';
+            marker.bindPopup(`
+                <strong>${callsign}</strong><br/>
+                ICAO: ${aircraft.icao}<br/>
+                Lat: ${formatCoord(lat)}<br/>
+                Lon: ${formatCoord(lon)}<br/>
+                Altitude: ${altitude}<br/>
+                First Seen: ${firstSeen}<br/>
+                Last Update: ${lastSeen}
+            `);
+            marker.addTo(aircraftLayer);
+            bounds.push([lat, lon]);
+        }
+
+        if (bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [40, 40] });
+        }
+    }
+
+    async function fetchAircraft() {
+        try {
+            const response = await fetch(config.api_endpoint);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            renderAircraft(data);
+        } catch (err) {
+            console.error('Failed to refresh aircraft data', err);
+        }
+    }
+
+    if (Array.isArray(config.initial_aircraft) && config.initial_aircraft.length > 0) {
+        renderAircraft(config.initial_aircraft);
+    }
+
+    setInterval(fetchAircraft, refreshInterval);
+})();
+</script>
+{% endblock %}
