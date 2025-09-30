@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import websockets
+from websockets import exceptions as ws_exc
 
 try:
     from .adsb_db import DBWorker
@@ -40,34 +41,63 @@ class ADSBSubscriber:
         self.active_sessions = {}
         self.last_saved_ts = {}
 
-    async def connect_and_listen(self):
+    async def connect_and_listen(self, retry_delay: float = 5.0, max_retry_delay: float = 60.0):
         """
         Connect to the WebSocket publisher and update aircraft_data as new
         data arrives.
         # TODO HANDLE FAILED CONNECTIONS AND DISCONNECTIONS GRACEFULLY
         """
-        async with websockets.connect(self.uri) as ws:
-            logging.info(
-                f"Connected to publisher at {self.uri}"
-            )
-            while True:
-                data = await ws.recv()
-                try:
-                    received = json.loads(data)
-                    # logging.debug(f"Raw data received: {received}")
-                    if isinstance(received, dict):
-                        self.aircraft_data = received
-                        logging.debug(
-                            f"Updated aircraft_data with {len(received)} entries."
-                        )
-                    else:
-                        logging.warning(
-                            f"Received non-dict data: {type(received)}"
-                        )
-                except Exception as e:
-                    logging.warning(
-                        f"Failed to decode message: {e}"
-                    )
+        base_delay = max(retry_delay, 0.1)
+        delay = base_delay
+        while True:
+            connected = False
+            try:
+                async with websockets.connect(self.uri) as ws:
+                    logging.info("Connected to publisher at %s", self.uri)
+                    connected = True
+                    delay = base_delay
+                    while True:
+                        try:
+                            data = await ws.recv()
+                        except asyncio.CancelledError:
+                            raise
+                        except ws_exc.ConnectionClosed as exc:
+                            logging.warning(
+                                "Connection to %s closed (%s); retrying in %.1fs",
+                                self.uri,
+                                getattr(exc, "reason", exc),
+                                delay,
+                            )
+                            break
+                        try:
+                            received = json.loads(data)
+                            if isinstance(received, dict):
+                                self.aircraft_data = received
+                                logging.debug(
+                                    "Updated aircraft_data with %d entries.",
+                                    len(received),
+                                )
+                            else:
+                                logging.warning(
+                                    "Received non-dict data: %s",
+                                    type(received),
+                                )
+                        except Exception as exc:
+                            logging.warning("Failed to decode message: %s", exc)
+            except asyncio.CancelledError:
+                raise
+            except (OSError, ws_exc.WebSocketException) as exc:
+                logging.warning(
+                    "Unable to connect to publisher at %s: %s; retrying in %.1fs",
+                    self.uri,
+                    exc,
+                    delay,
+                )
+            await asyncio.sleep(delay)
+            if connected:
+                delay = base_delay
+            else:
+                delay = min(delay * 2, max(max_retry_delay, base_delay))
 
     # TODO write to database
     async def save_to_db(self):

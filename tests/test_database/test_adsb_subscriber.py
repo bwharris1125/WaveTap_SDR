@@ -180,7 +180,7 @@ def test_connect_and_listen_processes_messages(monkeypatch):
     async def scenario():
         sub = ADSBSubscriber("ws://fake")
         with pytest.raises(asyncio.CancelledError):
-            await sub.connect_and_listen()
+            await sub.connect_and_listen(retry_delay=0.01, max_retry_delay=0.02)
         assert "ABC123" in sub.aircraft_data
 
     asyncio.run(scenario())
@@ -262,3 +262,45 @@ def test_adsb_subscriber_main(monkeypatch):
     assert events["db_path"] == expected_default
     assert events["save_calls"] == 1
     assert events["connected"]
+
+
+def test_connect_and_listen_retries_until_publisher_available(monkeypatch):
+    attempts = {"count": 0}
+
+    class DummyWS:
+        def __init__(self):
+            self._messages = iter([json.dumps({"ABC123": {"callsign": "TEST"}})])
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def recv(self):
+            try:
+                return next(self._messages)
+            except StopIteration:
+                raise asyncio.CancelledError
+
+    def fake_connect(uri):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise ConnectionRefusedError("publisher unavailable")
+        return DummyWS()
+
+    async def fake_sleep(_):
+        fake_sleep.calls.append(_)
+
+    fake_sleep.calls = []
+    monkeypatch.setattr(adsb_subscriber.websockets, "connect", fake_connect)
+    monkeypatch.setattr(adsb_subscriber.asyncio, "sleep", fake_sleep)
+
+    sub = ADSBSubscriber("ws://retry")
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(sub.connect_and_listen(retry_delay=0.01, max_retry_delay=0.05))
+
+    assert attempts["count"] >= 2
+    assert fake_sleep.calls, "Retry loop should sleep between attempts"
+    assert "ABC123" in sub.aircraft_data
