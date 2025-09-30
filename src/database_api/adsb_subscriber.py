@@ -8,7 +8,7 @@ import uuid
 
 import websockets
 
-from database.adsb_db import DBWorker
+from adsb_db import DBWorker
 
 
 class ADSBSubscriber:
@@ -178,7 +178,7 @@ async def main():
     parser.add_argument(
         "--db",
         type=str,
-        default=os.environ.get("ADSB_DB_PATH", "src/database/adsb.db"),
+        default=os.environ.get("ADSB_DB_PATH", "src/database/adsb_data.db"),
         help="Path to SQLite database file"
     )
     args = parser.parse_args()
