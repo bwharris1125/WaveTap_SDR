@@ -1,0 +1,53 @@
+version: "3.11"
+
+services:
+  adsb-publisher:
+    build:
+      context: .
+      dockerfile: docker/sdr_cap/Dockerfile
+    environment:
+      - DUMP1090_HOST=${DUMP1090_HOST:-127.0.0.1}
+      - DUMP1090_RAW_PORT=${DUMP1090_RAW_PORT:-30002}
+      - ADSB_WS_HOST=0.0.0.0
+      - ADSB_WS_PORT=8443
+      - ADSB_PUBLISH_INTERVAL=${ADSB_PUBLISH_INTERVAL:-3}
+      - ADSB_PUBLISHER_LOG_LEVEL=${ADSB_PUBLISHER_LOG_LEVEL:-INFO}
+    ports:
+      - "8443:8443"
+
+  adsb-subscriber:
+    build:
+      context: .
+      dockerfile: docker/database_api/Dockerfile
+    command: ["python", "-m", "adsb_subscriber", "--uri", "ws://adsb-publisher:8443", "--db", "/data/adsb_data.db"]
+    depends_on:
+      - adsb-publisher
+    environment:
+      - ADSB_DB_PATH=/data/adsb_data.db
+      - ADSB_WS_URI=ws://adsb-publisher:8443
+      - ADSB_SAVE_INTERVAL=${ADSB_SAVE_INTERVAL:-10}
+    volumes:
+      - adsb-data:/data
+
+  database-api:
+    build:
+      context: .
+      dockerfile: docker/database_api/Dockerfile
+    depends_on:
+      - adsb-subscriber
+    environment:
+      - ADSB_DB_PATH=/data/adsb_data.db
+    ports:
+      - "5000:5000"
+    volumes:
+      - adsb-data:/data
+
+  arbiter:
+    build:
+      context: .
+      dockerfile: docker/arbiter/Dockerfile
+    ports:
+      - "8000:8000"
+
+volumes:
+  adsb-data:

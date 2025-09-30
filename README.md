@@ -9,6 +9,47 @@ Repository for SMU Software Architecture (CS7319) Class Project
    </div>
 </p>
 
+## Containerized microservices
+
+Docker build contexts for each deployable component live under `docker/` so the ADS-B capture pipeline can run as independent services:
+
+| Service | Context | Default command | Ports |
+| --- | --- | --- | --- |
+| SDR capture (publisher) | `docker/sdr_cap` | `python -m sdr_cap.adsb_publisher` | 8443 (WebSocket) |
+| ADS-B subscriber | `docker/database_api` | `python -m adsb_subscriber --uri … --db …` | n/a |
+| WaveTap API | `docker/database_api` | `gunicorn wavetap_api:app` | 5000 (HTTP) |
+| Arbiter control plane | `docker/arbiter` | `uvicorn arbiter.service:app` | 8000 (HTTP) |
+
+> The subscriber and API reuse the same base image; the active command is selected via Docker Compose.
+
+### Quick start with Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Environment variables can be supplied via `.env` or the shell to point the ADS-B publisher at your Dump1090 host:
+
+```
+DUMP1090_HOST=192.168.50.106
+DUMP1090_RAW_PORT=30002
+ADSB_PUBLISH_INTERVAL=2.5
+```
+
+Persistent ADS-B data is stored in the named volume `adsb-data` and can be inspected on the host under `/var/lib/docker/volumes/adsb-data/_data/adsb_data.db`.
+
+For manual builds the contexts can be built independently, for example:
+
+```bash
+docker build -t wavetap-database-api -f docker/database_api/Dockerfile .
+docker run --rm -p 5000:5000 \
+  -e ADSB_DB_PATH=/data/adsb_data.db \
+  -v $(pwd)/data:/data \
+  wavetap-database-api
+```
+
+See the "Microservice deployment" section later in this document for a deeper dive into configuration, exposed environment variables, and health-check endpoints.
+
    ## Project Structure
 ```
 CS7319_SW_Arch/
@@ -105,6 +146,31 @@ source .venv/bin/activate
 python src/main.py
 ```
 
+## Microservice deployment details
+
+| Component | Purpose | Default command | Key environment variables |
+| --- | --- | --- | --- |
+| `adsb-publisher` | Streams ADS-B messages from Dump1090 and republishes them over WebSocket. | `python -m sdr_cap.adsb_publisher` | `DUMP1090_HOST`, `DUMP1090_RAW_PORT`, `ADSB_WS_PORT`, `ADSB_PUBLISH_INTERVAL`, `RECEIVER_LAT`, `RECEIVER_LON` |
+| `adsb-subscriber` | Consumes the publisher stream and persists telemetry into SQLite. | `python -m adsb_subscriber --uri ws://adsb-publisher:8443 --db /data/adsb_data.db` | `ADSB_WS_URI`, `ADSB_DB_PATH`, `ADSB_SAVE_INTERVAL` |
+| `database-api` | Flask UI and REST endpoints for browsing stored aircraft data. | `gunicorn wavetap_api:app` | `ADSB_DB_PATH`, `WAVETAP_API_PORT` (via Compose) |
+| `arbiter` | FastAPI control plane for orchestrating SDR modules. | `uvicorn arbiter.service:app` | none (module registration happens over HTTP) |
+
+### Ports and networking
+
+| Service | External port | Protocol |
+| --- | --- | --- |
+| `adsb-publisher` | 8443 | WebSocket stream of aircraft JSON |
+| `database-api` | 5000 | HTTP dashboard and REST APIs |
+| `arbiter` | 8000 | HTTP control plane |
+
+The subscriber container shares the `adsb-data` named volume with the API so both have access to the same SQLite database. Adjust Compose bindings or replace the volume with a bind-mount if you need to persist data outside Docker.
+
+### Health checks
+
+- Database API: `GET http://localhost:5000/adsb/api/aircraft?window=300`
+- ADS-B publisher: connects clients to `ws://localhost:8443` (receives JSON messages)
+- Arbiter: `GET http://localhost:8000/health`
+
 ### SDR Module
 The RTL-SDR functionality is located in `src/sdr/radio.py`. This module provides basic RTL-SDR configuration and testing capabilities.
 
@@ -179,27 +245,19 @@ You can now develop and run your project in a Linux environment using WSL, with 
 
 ## Docker Containerization
 
-The SDR IQ streaming server supports containerization with Docker for easy deployment and scaling. See **[DOCKER.md](DOCKER.md)** for complete containerization guide including:
+The repository ships first-class Docker support for each microservice—refer to the "Microservice deployment details" section above or the `docker-compose.yml` file for an opinionated development stack. Customize the build contexts under `docker/` if you need to extend the base images (for example to add hardware drivers or corporate certificate bundles).
 
-- **Quick Start**: Build and run containers
-- **Configuration**: Environment variables and settings
-- **Production Deployment**: Docker Compose and Kubernetes
-- **USB Device Access**: RTL-SDR hardware integration
-- **Multi-container Architecture**: Server/client separation
-
-### Quick Docker Start
+### Quick Docker Start (single image)
 
 ```bash
-# Build the container
-docker build -t sdr-iq-server .
+# Build the WaveTap API image only
+docker build -t wavetap-api -f docker/database_api/Dockerfile .
 
-# Run with USB device access
-docker run -d --privileged -p 8080:8080 \
-  -e SDR_CENTER_FREQ=1090000000 \
-  sdr-iq-server
-
-# Or use Docker Compose
-docker-compose up -d sdr-server
+# Run and expose the dashboard on http://localhost:5000
+docker run --rm -p 5000:5000 \
+   -e ADSB_DB_PATH=/data/adsb_data.db \
+   -v $(pwd)/data:/data \
+   wavetap-api
 ```
 
 ---
