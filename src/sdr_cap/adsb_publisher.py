@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import math
+import os
 import threading
 
 import pyModeS as pms
@@ -236,8 +237,51 @@ class ADSBPublisher:
             self._client_thread.join(timeout=2)
 
 
+def _env_float(name: str, default: float | None = None) -> float | None:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        logging.warning("Invalid float for %s=%s; using default %s", name, value, default)
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logging.warning("Invalid int for %s=%s; using default %s", name, value, default)
+        return default
+
+
+def _load_config_from_env() -> dict[str, float | int | str | None]:
+    return {
+        "host": os.getenv("DUMP1090_HOST", "127.0.0.1"),
+        "src_port": _env_int("DUMP1090_RAW_PORT", 30002),
+        "dest_ip": os.getenv("ADSB_WS_HOST", "0.0.0.0"),
+        "dest_port": _env_int("ADSB_WS_PORT", 8443),
+        "interval": _env_float("ADSB_PUBLISH_INTERVAL", 3.0) or 3.0,
+        "receiver_lat": _env_float("RECEIVER_LAT"),
+        "receiver_lon": _env_float("RECEIVER_LON"),
+    }
+
+
 async def main():
-    publisher = ADSBPublisher(host="192.168.50.106")
+    config = _load_config_from_env()
+    publisher = ADSBPublisher(
+        host=config["host"],
+        src_port=config["src_port"],
+        dest_ip=config["dest_ip"],
+        dest_port=config["dest_port"],
+        interval=config["interval"],
+        receiver_lat=config["receiver_lat"],
+        receiver_lon=config["receiver_lon"],
+    )
     try:
         await publisher.run()
     except KeyboardInterrupt:
@@ -247,5 +291,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    log_level = os.getenv("ADSB_PUBLISHER_LOG_LEVEL", "DEBUG").upper()
+    logging.basicConfig(level=getattr(logging, log_level, logging.DEBUG))
     asyncio.run(main())

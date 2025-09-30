@@ -29,7 +29,7 @@ Effort: 1-2 hours
 ## 2) Add validation for `AircraftData`
 Goal: Harden the `AircraftData` model with input validation.
 
-Why: Catch invalid or malformed decoder output early and get better typing guarantees. Pydantic integrates well with FastAPI.
+Why: Catch invalid or malformed decoder output early and get better typing guarantees. Pydantic integrates well with Flask via `pydantic` models or marshmallow-style validation.
 
 Files to add/change:
 - `src/utilities/aircraft_data.py` — add Pydantic model or validators
@@ -92,11 +92,11 @@ Effort: 4-8 hours
 
 ---
 
-## 6) FastAPI skeleton + endpoints
-Goal: Provide a lightweight API to query recent aircraft, last seen by ICAO, and a WebSocket for live updates.
+## 6) Flask API skeleton + endpoints
+Goal: Provide a lightweight Flask API to query recent aircraft, last seen by ICAO, and a WebSocket for live updates.
 
 Files:
-- `src/api/app.py` — FastAPI app
+- `src/api/app.py` — Flask app
 - `Dockerfile` updates
 
 Acceptance criteria:

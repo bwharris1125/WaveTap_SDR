@@ -7,8 +7,9 @@ pyModeS>=2.10.0
 
 # Web and API frameworks (if used)
 flask>=2.0.0
-fastapi>=0.95.0
 httpx>=0.24.0
+websockets>=11.0.0
+gunicorn>=21.2.0
 
 # Development and testing
 pytest>=6.0.0
