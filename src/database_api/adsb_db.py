@@ -22,6 +22,16 @@ class DBWorker(threading.Thread):
     def __init__(self, db_path: str):
         super().__init__(daemon=True)
         self.db_path = db_path
+        try:
+            path_obj = Path(db_path)
+        except TypeError:
+            path_obj = None
+        else:
+            if db_path not in {":memory:"} and not str(db_path).startswith("file:"):
+                try:
+                    path_obj.parent.mkdir(parents=True, exist_ok=True)
+                except Exception as exc:
+                    logging.warning("Failed to ensure directory for %s: %s", db_path, exc)
         self.q = queue.Queue()
         self.conn = None
         # use a different name to avoid shadowing Thread._stop()
@@ -102,6 +112,10 @@ class DBWorker(threading.Thread):
             lat REAL,
             lon REAL,
             alt REAL,
+            velocity REAL,
+            track REAL,
+            vertical_rate REAL,
+            type TEXT,
             FOREIGN KEY (session_id) REFERENCES flight_session(id),
             FOREIGN KEY (icao) REFERENCES aircraft(icao)
         );

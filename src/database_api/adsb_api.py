@@ -53,13 +53,25 @@ def _get_connection() -> sqlite3.Connection:
 def _query_all_aircraft() -> List[sqlite3.Row]:
     query = """
     WITH latest_path AS (
-        SELECT p.*
-        FROM path p
-        JOIN (
-            SELECT icao, MAX(ts) AS max_ts
-            FROM path
-            GROUP BY icao
-        ) lp ON lp.icao = p.icao AND lp.max_ts = p.ts
+        SELECT
+            ranked.session_id,
+            ranked.icao,
+            ranked.ts,
+            ranked.ts_iso,
+            ranked.lat,
+            ranked.lon,
+            ranked.alt,
+            ranked.velocity,
+            ranked.track,
+            ranked.vertical_rate,
+            ranked.type
+        FROM (
+            SELECT
+                p.*,
+                ROW_NUMBER() OVER (PARTITION BY icao ORDER BY ts DESC, id DESC) AS rn
+            FROM path p
+        ) AS ranked
+        WHERE ranked.rn = 1
     )
     SELECT
         a.icao,
@@ -86,13 +98,25 @@ def _query_all_aircraft() -> List[sqlite3.Row]:
 def _query_aircraft(icao: str) -> Optional[sqlite3.Row]:
     query = """
     WITH latest_path AS (
-        SELECT p.*
-        FROM path p
-        JOIN (
-            SELECT icao, MAX(ts) AS max_ts
-            FROM path
-            GROUP BY icao
-        ) lp ON lp.icao = p.icao AND lp.max_ts = p.ts
+        SELECT
+            ranked.session_id,
+            ranked.icao,
+            ranked.ts,
+            ranked.ts_iso,
+            ranked.lat,
+            ranked.lon,
+            ranked.alt,
+            ranked.velocity,
+            ranked.track,
+            ranked.vertical_rate,
+            ranked.type
+        FROM (
+            SELECT
+                p.*,
+                ROW_NUMBER() OVER (PARTITION BY icao ORDER BY ts DESC, id DESC) AS rn
+            FROM path p
+        ) AS ranked
+        WHERE ranked.rn = 1
     )
     SELECT
         a.icao,

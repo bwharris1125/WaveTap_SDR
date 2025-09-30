@@ -5,38 +5,40 @@ import os
 import sys
 import time
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 import websockets
 
-from adsb_db import DBWorker
+try:
+    from .adsb_db import DBWorker
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from adsb_db import DBWorker
 
 
 class ADSBSubscriber:
+    """Subscribe to ADS-B updates, mirror them locally, and persist into SQLite."""
+
+    def __init__(self, uri: str):
+        """Initialize the subscriber with the WebSocket URI."""
+        self.uri = uri
+        self.aircraft_data = {}
+        self.db_worker = None
+        self.active_sessions = {}
+        self.last_saved_ts = {}
+
     def setup_db(self, db_path=None):
         """Initialize DBWorker for database operations."""
         if db_path is None:
-            db_path = os.environ.get(
-                "ADSB_DB_PATH",
-                "src/database/adsb.db"
-            )
+            env_path = os.environ.get("ADSB_DB_PATH")
+            if env_path:
+                db_path = env_path
+            else:
+                db_path = str(Path(__file__).with_name("adsb_data.db"))
         self.db_worker = DBWorker(db_path)
         self.db_worker.start()
-        self.active_sessions = {}  # {icao: session_id}
-        """Initialize DBWorker for database operations."""
-        self.db_worker = DBWorker(db_path)
-        self.db_worker.start()
-        self.active_sessions = {}  # {icao: session_id}
-    """
-    ADSBSubscriber connects to a WebSocket publisher, receives ADS-B aircraft
-    data, and maintains a rolling in-memory dictionary of aircraft data on the
-    subscriber side.
-    """
-    def __init__(self, uri: str):
-        """
-        Initialize the subscriber with the WebSocket URI.
-        """
-        self.uri = uri
-        self.aircraft_data = {}
+        self.active_sessions = {}
+        self.last_saved_ts = {}
 
     async def connect_and_listen(self):
         """
@@ -72,21 +74,37 @@ class ADSBSubscriber:
         """
         Save current aircraft_data to the database, including velocity fields and session tracking.
         """
+        if self.db_worker is None:
+            logging.warning("DB worker not initialized; call setup_db() before saving data.")
+            return
         if not self.aircraft_data:
             logging.debug("No aircraft data to save to database.")
+            return
         for icao, entry in self.aircraft_data.items():
-            logging.debug(
-                f"Saving aircraft {icao} to database: {entry}"
-            )
-            # Save to aircraft table
+            last_update = entry.get("last_update")
+            logging.debug("Saving aircraft %s to database: %s", icao, entry)
             self.db_worker.enqueue((
                 "upsert_aircraft",
                 icao,
                 entry.get("callsign"),
                 entry.get("first_seen"),
-                entry.get("last_update")
+                last_update,
             ))
-            # Session tracking
+            if last_update is None:
+                continue
+
+            previous_ts = self.last_saved_ts.get(icao)
+            if previous_ts is not None and last_update <= previous_ts:
+                logging.debug(
+                    "Skipping duplicate position for %s (last_update=%s, previous=%s)",
+                    icao,
+                    last_update,
+                    previous_ts,
+                )
+                continue
+
+            self.last_saved_ts[icao] = last_update
+
             session_id = self.active_sessions.get(icao)
             if not session_id:
                 session_id = str(uuid.uuid4())
@@ -95,41 +113,30 @@ class ADSBSubscriber:
                     "start_session",
                     session_id,
                     icao,
-                    entry.get("last_update")
+                    last_update,
                 ))
-            else:
-                self.db_worker.enqueue((
-                    "end_session",
-                    session_id,
-                    entry.get("last_update")
-                ))
-            # Save to path table
-            position = entry.get("position")
-            velocity = entry.get("velocity")
-            if position:
-                ts = entry.get("last_update")
-                import datetime
-                ts_iso = (
-                    datetime.datetime.fromtimestamp(ts, datetime.UTC).isoformat()
-                    if ts else None
-                )
-                self.db_worker.enqueue((
-                    "insert_path",
-                    session_id,
-                    icao,
-                    ts,
-                    ts_iso,
-                    position.get("lat"),
-                    position.get("lon"),
-                    entry.get("altitude"),
-                    velocity.get("speed") if velocity else None,
-                    velocity.get("track") if velocity else None,
-                    velocity.get("vertical_rate") if velocity else None,
-                    velocity.get("type") if velocity else None
-                ))
-                logging.debug(
-                    f"Inserted path for {icao} at {ts_iso}"
-                )
+
+            position = entry.get("position") or {}
+            if not position:
+                continue
+
+            velocity = entry.get("velocity") or {}
+            ts_iso = datetime.fromtimestamp(last_update, UTC).isoformat()
+            self.db_worker.enqueue((
+                "insert_path",
+                session_id,
+                icao,
+                last_update,
+                ts_iso,
+                position.get("lat"),
+                position.get("lon"),
+                entry.get("altitude"),
+                velocity.get("speed"),
+                velocity.get("track"),
+                velocity.get("vertical_rate"),
+                velocity.get("type"),
+            ))
+            logging.debug("Inserted path for %s at %s", icao, ts_iso)
 
 
 def print_aircraft_data(collector, interval: int = 3) -> None:
@@ -175,10 +182,11 @@ async def main():
         default=os.environ.get("ADSB_WS_URI", "ws://127.0.0.1:8443"),
         help="WebSocket URI for publisher"
     )
+    default_db = os.environ.get("ADSB_DB_PATH") or str(Path(__file__).with_name("adsb_data.db"))
     parser.add_argument(
         "--db",
         type=str,
-        default=os.environ.get("ADSB_DB_PATH", "src/database/adsb_data.db"),
+        default=default_db,
         help="Path to SQLite database file"
     )
     args = parser.parse_args()

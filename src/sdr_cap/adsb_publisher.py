@@ -88,6 +88,7 @@ class ADSBPublisher:
         self.clients = set()
         self._client_thread = None
         self._shutdown_event = threading.Event()
+        self.bound_port = None
         logging.info("Starting ADSBPublisher...")
 
     async def handler(self, websocket) -> None:
@@ -120,7 +121,15 @@ class ADSBPublisher:
         self._client_thread = threading.Thread(target=self.src_client.run, daemon=True)
         self._client_thread.start()
         # Start WebSocket server
-        async with websockets.serve(self.handler, self.dest_ip, self.dest_port):
+        async with websockets.serve(self.handler, self.dest_ip, self.dest_port) as server:
+            sockets = getattr(server, "sockets", None)
+            if sockets:
+                try:
+                    self.bound_port = sockets[0].getsockname()[1]
+                except (IndexError, OSError):
+                    self.bound_port = self.dest_port
+            else:
+                self.bound_port = self.dest_port
             await self.publish_data()
 
     # NOTE: not currently captured by `ctrl+c` due to async structure

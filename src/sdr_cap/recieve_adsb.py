@@ -5,7 +5,7 @@ adsb_logger.py
 - Uses pyModeS to decode ADS-B messages
 - Groups continuous receptions into flight sessions (uuid)
 - Inserts each position report (waypoint) into SQLite
-- Run with: python adsb_logger.py --host 192.168.50.106 --port 30002 --db ./adsb.db --ref-lat 32.8 --ref-lon -97.0
+- Run with: python adsb_logger.py --host 192.168.50.106 --port 30002 --db ./adsb_data.db --ref-lat 32.8 --ref-lon -97.0
 """
 import argparse
 import logging
@@ -13,12 +13,13 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict
 
 import pyModeS as pms
 from pyModeS.extra.tcpclient import TcpClient
 
-from database.adsb_db import AircraftState, DBWorker
+from database_api.adsb_db import AircraftState, DBWorker
 
 # ----- CONFIG -----
 SESSION_TIMEOUT = 300          # seconds without updates => session end (default 5 minutes)
@@ -148,7 +149,8 @@ def main():
     parser = argparse.ArgumentParser(description="ADS-B logger (dump1090 -> sqlite via pyModeS)")
     parser.add_argument("--host", required=True, help="dump1090 host (e.g. 192.168.50.106)")
     parser.add_argument("--port", type=int, default=30002, help="dump1090 raw port (default 30002)")
-    parser.add_argument("--db", default="./adsb.db", help="sqlite DB file")
+    default_db = str(Path(__file__).with_name("adsb_data.db"))
+    parser.add_argument("--db", default=default_db, help="sqlite DB file")
     parser.add_argument("--ref-lat", type=float, required=True, help="receiver reference latitude (for CPR position resolving)")
     parser.add_argument("--ref-lon", type=float, required=True, help="receiver reference longitude")
     parser.add_argument("--session-timeout", type=int, default=SESSION_TIMEOUT, help="seconds without updates to close session")
