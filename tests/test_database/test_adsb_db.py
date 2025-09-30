@@ -4,7 +4,7 @@ import time
 import uuid
 from pathlib import Path
 
-from database.adsb_db import AircraftState, DBWorker
+from database_api.adsb_db import AircraftState, DBWorker
 
 
 def test_aircraftstate_defaults():
@@ -18,9 +18,9 @@ def test_aircraftstate_defaults():
 
 
 def test_dbworker_processes_tasks(tmp_path):
-    # place temporary sqlite file inside the project src/database folder so it
+    # place temporary sqlite file inside the project src/database_api folder so it
     # lives alongside other DB artifacts during test runs
-    db_folder = Path(__file__).resolve().parents[2] / "src" / "database"
+    db_folder = Path(__file__).resolve().parents[2] / "src" / "database_api"
     db_folder.mkdir(parents=True, exist_ok=True)
     db_file = db_folder / f"test_adsb_{int(time.time() * 1000)}.db"
     db_path = str(db_file)
@@ -88,3 +88,54 @@ def test_dbworker_processes_tasks(tmp_path):
                     os.remove(p)
         except Exception:
             pass
+
+
+def test_dbworker_handle_branches(monkeypatch):
+    # Force fallback schema by pretending schema file is absent
+    monkeypatch.setattr(Path, "exists", lambda self: False)
+
+    worker = DBWorker.__new__(DBWorker)
+    worker.db_path = ":memory:"
+    worker.q = None
+    worker.conn = sqlite3.connect(":memory:")
+
+    worker._init_schema()
+    cur = worker.conn.cursor()
+
+    worker._handle(("upsert_aircraft", "ICAO1", "CALL", 1.0, 2.0), cur)
+    worker.conn.commit()
+
+    worker._handle(("start_session", "sess", "ICAO1", 3.0), cur)
+    worker._handle(("end_session", "sess", 4.0), cur)
+    worker._handle((
+        "insert_path",
+        "sess",
+        "ICAO1",
+        5.0,
+        "2024-01-01T00:00:05Z",
+        32.0,
+        -96.0,
+        1000.0,
+        250.0,
+        90.0,
+        0.0,
+        "airborne",
+    ), cur)
+
+    worker.conn.commit()
+
+    cur.execute("SELECT icao, callsign FROM aircraft")
+    row = cur.fetchone()
+    assert row == ("ICAO1", "CALL")
+
+    cur.execute("SELECT end_time FROM flight_session WHERE id=?", ("sess",))
+    sess_row = cur.fetchone()
+    assert sess_row[0] == 4.0
+
+    cur.execute("SELECT COUNT(*) FROM path")
+    assert cur.fetchone()[0] == 1
+
+    # Unknown task should not raise
+    worker._handle(("bogus",), cur)
+
+    worker.conn.close()
