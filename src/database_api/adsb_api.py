@@ -232,12 +232,16 @@ def home():
             display_callsign = html.escape(callsign) if callsign else "&nbsp;"
             altitude = position.get("altitude")
             altitude_display = str(altitude) if altitude is not None else ""
+            lat = position.get("lat")
+            lon = position.get("lon")
+            lat_display = f"{lat:.6f}" if isinstance(lat, (float, int)) else (lat if lat is not None else "")
+            lon_display = f"{lon:.6f}" if isinstance(lon, (float, int)) else (lon if lon is not None else "")
             rows.append(
                 "<tr>"
                 f"<td>{ac['icao']}</td>"
                 f"<td>{display_callsign}</td>"
-                f"<td>{position.get('lat', '')}</td>"
-                f"<td>{position.get('lon', '')}</td>"
+                f"<td>{lat_display}</td>"
+                f"<td>{lon_display}</td>"
                 f"<td>{altitude_display}</td>"
                 f"<td>{ac.get('last_seen', '') or ''}</td>"
                 "</tr>"

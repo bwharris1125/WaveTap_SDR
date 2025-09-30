@@ -23,7 +23,10 @@ def test_adsb_publisher_receives(monkeypatch):
                 pass
 
         # Patch ADSBPublisher to use MockClient
-        monkeypatch.setattr("sdr_cap.adsb_publisher.ADSBClient", lambda host, port, dtype: MockClient())
+        monkeypatch.setattr(
+            "sdr_cap.adsb_publisher.ADSBClient",
+            lambda host, port, dtype, **kwargs: MockClient(),
+        )
         publisher = ADSBPublisher(HOST, SRC_PORT, HOST, DEST_PORT, interval=0.1)
 
         async def run_publisher():
@@ -61,6 +64,10 @@ def test_adsb_publisher_receives(monkeypatch):
 def test_adsb_client_handle_messages(monkeypatch):
     client = adsb_publisher.ADSBClient.__new__(adsb_publisher.ADSBClient)
     client.aircraft_data = {}
+    client._cpr_states = {}
+    client._position_failures = {}
+    client.receiver_lat = 33.0
+    client.receiver_lon = -97.0
 
     def fake_df(msg):
         return 17
@@ -93,6 +100,8 @@ def test_adsb_client_handle_messages(monkeypatch):
         },
         altitude=lambda msg: 18500,
         velocity=lambda msg: (255, 90, 0, "airborne"),
+        oe_flag=lambda msg: 0 if msg.strip() == "SURFACE" else 1,
+        position=lambda even_msg, odd_msg, te, to: (33.0001, -96.9999),
     )
     fake_common = SimpleNamespace(
         hex2bin=lambda msg: "0" * 112,
@@ -115,8 +124,11 @@ def test_adsb_client_handle_messages(monkeypatch):
     assert entry["callsign"] == "TEST123"
     assert entry["altitude"] == 18500
     assert entry["velocity"]["speed"] == 255
-    assert entry["position"]["lat"] == pytest.approx(0.5)
+    assert entry["position"]["lat"] == pytest.approx(33.0001)
+    assert entry["position"]["lon"] == pytest.approx(-96.9999)
     assert entry["last_update"] == 1004.0
+    assert entry["distance_nm"] == pytest.approx(0.007836068, rel=1e-6)
+    assert entry["distance_km"] == pytest.approx(0.014512398, rel=1e-6)
 
 
 def test_publish_data_without_clients(monkeypatch):
