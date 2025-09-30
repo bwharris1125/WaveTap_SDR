@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import html
 import os
 import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template, request, url_for
+from jinja2.runtime import Undefined
 
 
 app = Flask(__name__)
@@ -27,6 +27,97 @@ DB_PATH = _get_db_path()
 _SCHEMA_INITIALIZED = False
 _LOCAL_TZ = datetime.now().astimezone().tzinfo or timezone.utc
 _LOCAL_TZ_NAME = datetime.now(_LOCAL_TZ).tzname() or ""
+
+DEFAULT_LIVE_WINDOW_SECONDS = 300
+DEFAULT_MAP_CENTER: Tuple[float, float] = (32.7767, -96.7970)
+DEFAULT_MAP_ZOOM = 5
+
+
+def _format_timestamp(ts: Optional[float]) -> Optional[str]:
+    if ts is None:
+        return None
+    try:
+        local_dt = datetime.fromtimestamp(ts, tz=_LOCAL_TZ)
+    except (ValueError, OSError):
+        return None
+    return local_dt.strftime("%Y-%m-%d %I:%M:%S %p")
+
+
+def _filter_recent_aircraft(seconds: int = DEFAULT_LIVE_WINDOW_SECONDS) -> List[Dict[str, object]]:
+    cutoff = time.time() - seconds
+    return [ac for ac in get_aircraft_data() if ac.get("last_seen_epoch") and ac["last_seen_epoch"] >= cutoff]
+
+
+def _query_path_history(limit: int = 200) -> List[sqlite3.Row]:
+    query = """
+    SELECT
+        p.id,
+        p.session_id,
+        p.icao,
+        p.ts,
+        p.ts_iso,
+        p.lat,
+        p.lon,
+        p.alt,
+        p.velocity,
+        p.track,
+        p.vertical_rate,
+        a.callsign
+    FROM path p
+    LEFT JOIN aircraft a ON a.icao = p.icao
+    ORDER BY p.ts DESC, p.id DESC
+    LIMIT ?
+    """
+    with _get_connection() as conn:
+        return conn.execute(query, (limit,)).fetchall()
+
+
+def _serialize_path(row: sqlite3.Row) -> Dict[str, object]:
+    return {
+        "id": row["id"],
+        "icao": row["icao"],
+        "callsign": (row["callsign"] or "").replace("_", " ").strip(),
+        "session_id": row["session_id"],
+        "lat": row["lat"],
+        "lon": row["lon"],
+        "alt": row["alt"],
+        "velocity": row["velocity"],
+        "track": row["track"],
+        "vertical_rate": row["vertical_rate"],
+        "timestamp_epoch": row["ts"],
+        "timestamp_iso": row["ts_iso"],
+        "timestamp": _format_timestamp(row["ts"]),
+    }
+
+
+def _compute_map_center(aircraft: Sequence[Dict[str, object]]) -> Tuple[float, float]:
+    coords: List[Tuple[float, float]] = []
+    for ac in aircraft:
+        position = ac.get("position") or {}
+        lat = position.get("lat")
+        lon = position.get("lon")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+            coords.append((float(lat), float(lon)))
+    if not coords:
+        return DEFAULT_MAP_CENTER
+    avg_lat = sum(c[0] for c in coords) / len(coords)
+    avg_lon = sum(c[1] for c in coords) / len(coords)
+    return (avg_lat, avg_lon)
+
+
+@app.template_filter("format_coord")
+def _format_coord_filter(value: object) -> str:
+    if isinstance(value, Undefined) or value in (None, ""):
+        return ""
+    try:
+        return f"{float(value):.6f}"
+    except (TypeError, ValueError):
+        return ""
+
+
+@app.context_processor
+def _inject_template_globals():
+    return {"timezone_name": _LOCAL_TZ_NAME}
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -141,15 +232,6 @@ def _query_aircraft(icao: str) -> Optional[sqlite3.Row]:
 
 
 def _serialize_aircraft(row: sqlite3.Row) -> Dict[str, object]:
-    def _fmt_ts(ts: Optional[float]) -> Optional[str]:
-        if ts is None:
-            return None
-        try:
-            local_dt = datetime.fromtimestamp(ts, tz=_LOCAL_TZ)
-            return local_dt.strftime("%Y-%m-%d %I:%M:%S %p")
-        except (ValueError, OSError):
-            return None
-
     position = None
     if row["lat"] is not None or row["lon"] is not None:
         altitude = row["alt"]
@@ -161,7 +243,7 @@ def _serialize_aircraft(row: sqlite3.Row) -> Dict[str, object]:
             "altitude": altitude,
             "timestamp": row["position_timestamp"],
             "timestamp_iso": row["position_timestamp_iso"],
-            "timestamp_formatted": _fmt_ts(row["position_timestamp"]),
+            "timestamp_formatted": _format_timestamp(row["position_timestamp"]),
         }
     velocity = None
     if row["velocity"] is not None or row["track"] is not None or row["vertical_rate"] is not None:
@@ -177,9 +259,9 @@ def _serialize_aircraft(row: sqlite3.Row) -> Dict[str, object]:
         "icao": row["icao"],
         "callsign": callsign,
         "first_seen_epoch": row["first_seen"],
-        "first_seen": _fmt_ts(row["first_seen"]),
+        "first_seen": _format_timestamp(row["first_seen"]),
         "last_seen_epoch": row["last_seen"],
-        "last_seen": _fmt_ts(row["last_seen"]),
+        "last_seen": _format_timestamp(row["last_seen"]),
         "position": position,
         "velocity": velocity,
     }
@@ -204,53 +286,98 @@ def api_aircraft_detail(icao: str):
     return jsonify(_serialize_aircraft(row))
 
 
+@app.route("/live", methods=["GET"])
+def live_data():
+    aircraft = _filter_recent_aircraft()
+    window_minutes = max(1, DEFAULT_LIVE_WINDOW_SECONDS // 60)
+    return render_template(
+        "live_data.html",
+        title="Live ADS-B Data",
+        aircraft=aircraft,
+        window_minutes=window_minutes,
+    )
+
+
+@app.route("/historical", methods=["GET"])
+def historical_data():
+    aircraft = get_aircraft_data()
+    return render_template("historical_data.html", title="Historical Records", aircraft=aircraft)
+
+
+@app.route("/icao", methods=["GET"])
+def icao_lookup():
+    query = (request.args.get("icao", "") or "").strip().upper()
+    result: Optional[Dict[str, object]] = None
+    if query:
+        row = _query_aircraft(query)
+        if row is None:
+            result = {"error": f"No aircraft found for ICAO {query}."}
+        else:
+            result = _serialize_aircraft(row)
+    return render_template("icao_lookup.html", title="ICAO Lookup", query=query, result=result)
+
+
+@app.route("/flight-paths", methods=["GET"])
+def flight_paths():
+    limit = request.args.get("limit", type=int) or 200
+    limit = max(10, min(limit, 1000))
+    paths = [_serialize_path(row) for row in _query_path_history(limit)]
+    return render_template(
+        "flight_paths.html",
+        title="Recent Flight Paths",
+        paths=paths,
+    )
+
+
+@app.route("/live-map", methods=["GET"])
+def live_map():
+    aircraft = _filter_recent_aircraft()
+    center = _compute_map_center(aircraft)
+    return render_template(
+        "live_map.html",
+        title="Live Aircraft Map",
+        aircraft=aircraft,
+        refresh_interval=5,
+        default_center=center,
+        default_zoom=DEFAULT_MAP_ZOOM,
+    )
+
+
 @app.route("/")
 def home():
-    aircraft = get_aircraft_data()
-    cutoff = time.time() - 300
-    recent_aircraft = [ac for ac in aircraft if ac.get("last_seen_epoch") and ac["last_seen_epoch"] >= cutoff]
-
-    rows = [
-        "<!DOCTYPE html>",
-        "<html>",
-        "<head>",
-        "<meta http-equiv=\"refresh\" content=\"3\" />",
-        "<title>ADS-B Aircraft Data</title>",
-        "</head>",
-        "<body>",
-        "<h1>ADS-B Aircraft Data</h1>",
+    cards = [
+        {
+            "title": "Live ADS-B Data",
+            "description": "View aircraft detected in the last five minutes with key telemetry.",
+            "href": url_for("live_data"),
+            "cta": "Open Live View",
+        },
+        {
+            "title": "Historical Records",
+            "description": "Browse a catalog of all aircraft ever recorded by WaveTap.",
+            "href": url_for("historical_data"),
+            "cta": "Review History",
+        },
+        {
+            "title": "ICAO Lookup",
+            "description": "Search for a specific aircraft by ICAO identifier.",
+            "href": url_for("icao_lookup"),
+            "cta": "Lookup ICAO",
+        },
+        {
+            "title": "Flight Paths",
+            "description": "Inspect recent track points captured across all aircraft.",
+            "href": url_for("flight_paths"),
+            "cta": "View Tracks",
+        },
+        {
+            "title": "Live Map",
+            "description": "Visualize active aircraft on an interactive global map.",
+            "href": url_for("live_map"),
+            "cta": "Launch Map",
+        },
     ]
-    if recent_aircraft:
-        rows.append('<table border="1" cellpadding="5">')
-        tz_suffix = f" ({_LOCAL_TZ_NAME})" if _LOCAL_TZ_NAME else ""
-        rows.append(
-            f"<tr><th>ICAO</th><th>Callsign</th><th>Latitude</th><th>Longitude</th><th>Altitude (ft)</th><th>Last Seen{tz_suffix}</th></tr>"
-        )
-        for ac in recent_aircraft:
-            position = ac.get("position") or {}
-            callsign = ac.get("callsign", "")
-            display_callsign = html.escape(callsign) if callsign else "&nbsp;"
-            altitude = position.get("altitude")
-            altitude_display = str(altitude) if altitude is not None else ""
-            lat = position.get("lat")
-            lon = position.get("lon")
-            lat_display = f"{lat:.6f}" if isinstance(lat, (float, int)) else (lat if lat is not None else "")
-            lon_display = f"{lon:.6f}" if isinstance(lon, (float, int)) else (lon if lon is not None else "")
-            rows.append(
-                "<tr>"
-                f"<td>{ac['icao']}</td>"
-                f"<td>{display_callsign}</td>"
-                f"<td>{lat_display}</td>"
-                f"<td>{lon_display}</td>"
-                f"<td>{altitude_display}</td>"
-                f"<td>{ac.get('last_seen', '') or ''}</td>"
-                "</tr>"
-            )
-        rows.append("</table>")
-    else:
-        rows.append("<p>No aircraft observed in the last 5 minutes.</p>")
-    rows.extend(["</body>", "</html>"])
-    return "\n".join(rows)
+    return render_template("home.html", title="WaveTap Control Center", cards=cards)
 
 
 if __name__ == "__main__":

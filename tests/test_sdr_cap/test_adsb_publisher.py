@@ -126,6 +126,7 @@ def test_adsb_client_handle_messages(monkeypatch):
     assert entry["velocity"]["speed"] == 255
     assert entry["position"]["lat"] == pytest.approx(33.0001)
     assert entry["position"]["lon"] == pytest.approx(-96.9999)
+    assert entry["first_seen"] == 1001.0
     assert entry["last_update"] == 1004.0
     assert entry["distance_nm"] == pytest.approx(0.007836068, rel=1e-6)
     assert entry["distance_km"] == pytest.approx(0.014512398, rel=1e-6)

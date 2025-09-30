@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-0">Historical Aircraft Records</h1>
+        <p class="text-secondary mb-0">Complete inventory of aircraft seen by WaveTap.</p>
+    </div>
+    <a class="btn btn-outline-light" href="{{ url_for('historical_data') }}">Refresh</a>
+</div>
+{% if aircraft %}
+<div class="table-responsive">
+    <table class="table table-striped table-dark align-middle">
+        <thead>
+            <tr>
+                <th scope="col">ICAO</th>
+                <th scope="col">Callsign</th>
+                <th scope="col">First Seen</th>
+                <th scope="col">Last Seen</th>
+                <th scope="col">Last Latitude</th>
+                <th scope="col">Last Longitude</th>
+                <th scope="col">Last Altitude (ft)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ac in aircraft %}
+            <tr>
+                <td>{{ ac.icao }}</td>
+                <td>{{ (ac.callsign or "&nbsp;")|safe }}</td>
+                <td>{{ ac.first_seen or "" }}</td>
+                <td>{{ ac.last_seen or "" }}</td>
+                <td>{{ ac.position.lat|format_coord }}</td>
+                <td>{{ ac.position.lon|format_coord }}</td>
+                <td>{{ ac.position.altitude|default("", true) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-secondary">No aircraft have been recorded yet.</p>
+{% endif %}
+{% endblock %}

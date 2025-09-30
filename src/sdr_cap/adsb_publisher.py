@@ -132,8 +132,12 @@ class ADSBClient(TcpClient):
                         "last_update": None,
                         "distance_nm": None,
                         "distance_km": None,
+                        "first_seen": timestamp,
                     }
                 entry = self.aircraft_data[icao]
+                first_seen = entry.get("first_seen")
+                if first_seen is None or timestamp < first_seen:
+                    entry["first_seen"] = timestamp
                 entry["last_update"] = timestamp
                 if 1 <= tc <= 4:
                     entry["callsign"] = pms.adsb.callsign(msg)

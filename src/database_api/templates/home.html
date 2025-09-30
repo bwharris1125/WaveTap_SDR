@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h1 class="card-title">WaveTap Control Center</h1>
+                <p class="card-text text-secondary">
+                    Use the control panel below to navigate through the live monitoring tools, historical archives, and aircraft lookups. Future releases will add controls for the SDR arbiter and acquisition pipeline.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% for card in cards %}
+    <div class="col-md-6 col-xl-3">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title">{{ card.title }}</h5>
+                <p class="card-text flex-grow-1">{{ card.description }}</p>
+                <a class="btn btn-primary mt-3" href="{{ card.href }}">{{ card.cta }}</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
