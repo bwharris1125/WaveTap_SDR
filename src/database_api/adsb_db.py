@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Optional
 
 
+_EXPECTED_PATH_COLUMNS = {
+    "velocity": "REAL",
+    "track": "REAL",
+    "vertical_rate": "REAL",
+    "type": "TEXT",
+}
+
+
 @dataclass
 class AircraftState:
     icao: str
@@ -83,6 +91,7 @@ class DBWorker(threading.Thread):
             try:
                 sql = schema_path.read_text(encoding="utf-8")
                 self.conn.executescript(sql)
+                self._ensure_path_columns()
                 return
             except Exception as e:
                 logging.exception("Failed to read/execute schema file %s: %s", schema_path, e)
@@ -122,6 +131,29 @@ class DBWorker(threading.Thread):
         CREATE INDEX IF NOT EXISTS idx_path_icao_ts ON path(icao, ts);
         """
         self.conn.executescript(s)
+        self._ensure_path_columns()
+
+    def _ensure_path_columns(self):
+        try:
+            rows = self.conn.execute("PRAGMA table_info(path)").fetchall()
+        except sqlite3.Error as exc:
+            logging.warning("Unable to inspect path table schema: %s", exc)
+            return
+
+        if not rows:
+            return
+
+        existing = {row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in rows}
+        for column, sql_type in _EXPECTED_PATH_COLUMNS.items():
+            if column not in existing:
+                try:
+                    self.conn.execute(f"ALTER TABLE path ADD COLUMN {column} {sql_type}")
+                except sqlite3.Error as exc:
+                    logging.warning("Failed to add %s column to path table: %s", column, exc)
+        try:
+            self.conn.commit()
+        except sqlite3.Error:
+            pass
 
     def _handle(self, task, cur):
         typ = task[0]

@@ -25,6 +25,14 @@ DEFAULT_MAP_ZOOM = 5
 _SCHEMA_INITIALIZED: Dict[Path, bool] = {}
 
 
+_EXPECTED_PATH_COLUMNS: Dict[str, str] = {
+    "velocity": "REAL",
+    "track": "REAL",
+    "vertical_rate": "REAL",
+    "type": "TEXT",
+}
+
+
 def _get_logger():
     try:
         return current_app.logger  # type: ignore[attr-defined]
@@ -55,7 +63,33 @@ def _ensure_schema(conn: sqlite3.Connection, db_path: Path) -> None:
             conn.executescript(script)
         except Exception as exc:  # pragma: no cover - logged for visibility
             _get_logger().warning("Failed to apply schema from %s: %s", schema_path, exc)
+    _ensure_path_columns(conn)
     _SCHEMA_INITIALIZED[db_path] = True
+
+
+def _ensure_path_columns(conn: sqlite3.Connection) -> None:
+    """Ensure newly introduced path columns exist for legacy databases."""
+
+    try:
+        rows = conn.execute("PRAGMA table_info(path)").fetchall()
+    except sqlite3.Error as exc:  # pragma: no cover - defensive logging
+        _get_logger().warning("Unable to inspect path table schema: %s", exc)
+        return
+
+    if not rows:
+        return
+
+    existing = {row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in rows}
+    for column, sql_type in _EXPECTED_PATH_COLUMNS.items():
+        if column not in existing:
+            try:
+                conn.execute(f"ALTER TABLE path ADD COLUMN {column} {sql_type}")
+            except sqlite3.Error as exc:  # pragma: no cover - defensive logging
+                _get_logger().warning("Failed to add %s column to path table: %s", column, exc)
+    try:
+        conn.commit()
+    except sqlite3.Error:
+        pass
 
 
 def _get_connection() -> sqlite3.Connection:

@@ -146,7 +146,7 @@ def _env_bool(name: str, default: bool) -> bool:
 def load_config() -> WaveTapConfig:
     """Derive configuration for each managed service from environment."""
 
-    dump1090_host = os.getenv("DUMP1090_HOST", "127.0.0.1")
+    dump1090_host = os.getenv("DUMP1090_HOST", "192.168.50.106") # this is specific to my development setup
     dump1090_port = _env_int("DUMP1090_RAW_PORT", 30002)
     websocket_host = os.getenv("ADSB_WS_HOST", "0.0.0.0")
     websocket_port = _env_int("ADSB_WS_PORT", 8443)

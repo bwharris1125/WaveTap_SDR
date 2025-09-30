@@ -3,7 +3,7 @@
 <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-sA+z0ym4b58yk7tMTJhjvZxYRegS13Y24g/2F2A7u6A="
+    integrity="sha256-u7ZcDQN2Fk8syeFTh6P8voTkdeisDz8ICD92m2wE0XQ="
     crossorigin=""
 />
 <style>
@@ -44,7 +44,7 @@
 </script>
 {% endblock %}
 {% block scripts %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-VI/kjoN1HYvNReRSy4pru+F28prms9GY8S+0mLefPp4=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-o9N1j7kMkkuPJ4ZKHTm9Q0iY8Ug018KsV4bYtIuP0hA=" crossorigin=""></script>
 <script>
 (function() {
     const configEl = document.getElementById('map-config');
@@ -149,6 +149,7 @@
         renderAircraft(config.initial_aircraft);
     }
 
+    fetchAircraft();
     setInterval(fetchAircraft, refreshInterval);
 })();
 </script>

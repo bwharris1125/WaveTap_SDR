@@ -4,6 +4,7 @@ import time
 import uuid
 from pathlib import Path
 
+from database_api import adsb_module
 from database_api.adsb_db import AircraftState, DBWorker
 
 
@@ -139,3 +140,84 @@ def test_dbworker_handle_branches(monkeypatch):
     worker._handle(("bogus",), cur)
 
     worker.conn.close()
+
+
+def test_dbworker_upgrades_legacy_path_table(tmp_path):
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS aircraft (
+            icao TEXT PRIMARY KEY,
+            callsign TEXT,
+            first_seen REAL,
+            last_seen REAL
+        );
+        CREATE TABLE IF NOT EXISTS path (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            icao TEXT,
+            ts REAL,
+            ts_iso TEXT,
+            lat REAL,
+            lon REAL,
+            alt REAL
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    worker = DBWorker.__new__(DBWorker)
+    worker.db_path = str(db_path)
+    worker.q = None
+    worker.conn = sqlite3.connect(worker.db_path)
+    worker._stop_event = None
+    worker._poll_rate = 0.5
+
+    worker._init_schema()
+
+    cur = worker.conn.execute("PRAGMA table_info(path)")
+    columns = {row[1] for row in cur.fetchall()}
+    worker.conn.close()
+
+    assert {"velocity", "track", "vertical_rate", "type"}.issubset(columns)
+
+
+def test_adsb_module_schema_upgrade(tmp_path, monkeypatch):
+    db_path = tmp_path / "legacy_module.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS aircraft (
+            icao TEXT PRIMARY KEY,
+            callsign TEXT,
+            first_seen REAL,
+            last_seen REAL
+        );
+        CREATE TABLE IF NOT EXISTS path (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            icao TEXT,
+            ts REAL,
+            ts_iso TEXT,
+            lat REAL,
+            lon REAL,
+            alt REAL
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("ADSB_DB_PATH", str(db_path))
+    monkeypatch.setattr(adsb_module, "_SCHEMA_INITIALIZED", {})
+
+    with adsb_module._get_connection() as conn:
+        conn.execute("SELECT 1")
+
+    conn = sqlite3.connect(db_path)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(path)").fetchall()}
+    conn.close()
+
+    assert {"velocity", "track", "vertical_rate", "type"}.issubset(columns)
