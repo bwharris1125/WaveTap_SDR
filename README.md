@@ -18,7 +18,7 @@ Docker build contexts for each deployable component live under `docker/` so the 
 | SDR capture (publisher) | `docker/sdr_cap` | `python -m sdr_cap.adsb_publisher` | 8443 (WebSocket) |
 | ADS-B subscriber | `docker/database_api` | `python -m adsb_subscriber --uri … --db …` | n/a |
 | WaveTap API | `docker/database_api` | `gunicorn wavetap_api:app` | 5000 (HTTP) |
-| Arbiter control plane | `docker/arbiter` | `uvicorn arbiter.service:app` | 8000 (HTTP) |
+| Arbiter control plane | `docker/arbiter` | `gunicorn arbiter.service:app` | 8000 (HTTP) |
 
 > The subscriber and API reuse the same base image; the active command is selected via Docker Compose.
 
@@ -98,7 +98,6 @@ The setup script and requirements.txt will install the following Python librarie
 - `numpy` (numerical computing)
 - `matplotlib` (data visualization)
 - `flask` (web application framework)
-- `fastapi` (web API framework)
 - `httpx` (HTTP client for external API communication)
 - `pytest` (testing framework)
 - `pytest-cov` (test coverage)
@@ -153,7 +152,7 @@ python src/main.py
 | `adsb-publisher` | Streams ADS-B messages from Dump1090 and republishes them over WebSocket. | `python -m sdr_cap.adsb_publisher` | `DUMP1090_HOST`, `DUMP1090_RAW_PORT`, `ADSB_WS_PORT`, `ADSB_PUBLISH_INTERVAL`, `RECEIVER_LAT`, `RECEIVER_LON` |
 | `adsb-subscriber` | Consumes the publisher stream and persists telemetry into SQLite. | `python -m adsb_subscriber --uri ws://adsb-publisher:8443 --db /data/adsb_data.db` | `ADSB_WS_URI`, `ADSB_DB_PATH`, `ADSB_SAVE_INTERVAL` |
 | `database-api` | Flask UI and REST endpoints for browsing stored aircraft data. | `gunicorn wavetap_api:app` | `ADSB_DB_PATH`, `WAVETAP_API_PORT` (via Compose) |
-| `arbiter` | FastAPI control plane for orchestrating SDR modules. | `uvicorn arbiter.service:app` | none (module registration happens over HTTP) |
+| `arbiter` | Flask control plane for orchestrating SDR modules. | `gunicorn arbiter.service:app` | none (module registration happens over HTTP) |
 
 ### Ports and networking
 

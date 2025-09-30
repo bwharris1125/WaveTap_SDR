@@ -23,4 +23,4 @@ ENV PYTHONPATH=${APP_HOME}
 
 EXPOSE 8000
 
-ENTRYPOINT ["uvicorn", "arbiter.service:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["gunicorn", "arbiter.service:app", "--bind", "0.0.0.0:8000"]
