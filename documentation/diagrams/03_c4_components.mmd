@@ -1,52 +1,55 @@
 C4Component
 title "WaveTap - Core Components & Roadmap"
 
-Container_Boundary(pub, "adsb-publisher (Python)") {
-  Component(ad_client, "ADSBClient", "pyModeS TCP client", "Reads Mode-S frames from dump1090 feed")
-  Component(publisher, "ADSBPublisher", "asyncio WebSocket", "Aggregates aircraft state and broadcasts JSON")
+Container_Boundary(sdr_cap, "SDR Capture Service (Python)") {
+  Component(recieve_adsb_py, "recieve_adsb.py", "dump1090 client", "Ingests Mode-S frames from a TCP feed")
+  Component(adsb_publisher_py, "adsb_publisher.py", "asyncio WebSocket", "Aggregates aircraft telemetry and broadcasts JSON")
+  Component(adsb_test_print_py, "adsb_test_print.py", "diagnostic CLI", "Prints decoded ADS-B telemetry for validation")
 }
 
-Container_Boundary(sub, "adsb-subscriber (Python)") {
-  Component(ws_listener, "WebSocketListener", "asyncio", "Maintains live snapshot from publisher")
-  Component(session_tracker, "SessionTracker", "In-memory state", "Tracks aircraft sessions & deduplicates updates")
-  Component(db_worker, "DBWorker", "Queue consumer", "Persists aircraft, sessions, and flight paths into SQLite")
+Container_Boundary(database_api, "WaveTap API (Flask)") {
+  Component(wavetap_api_py, "wavetap_api.py", "Flask app", "Bootstraps the control center UI and registers blueprints")
+  Component(adsb_module_py, "adsb_module.py", "Flask Blueprint", "REST endpoints, dashboards, and historical lookups")
+  Component(adsb_subscriber_py, "adsb_subscriber.py", "asyncio WebSocket client", "Mirrors publisher data and forwards to DB worker")
+  Component(adsb_db_py, "adsb_db.py", "Persistence worker", "Queues and commits aircraft, session, and path records")
 }
 
-Container_Boundary(api, "WaveTap API (Flask)") {
-  Component(adsb_bp, "ADS-B Blueprint", "Flask Blueprint", "Dashboard routes, REST endpoints, historical lookups")
-  Component(ui_templates, "Templates", "Jinja", "Renders control center cards and capability placeholders")
+Container_Boundary(arbiter, "Arbiter Service (Flask - Planned)") {
+  Component(arbiter_controller_py, "arbiter_controller.py", "Coordinator", "Maintains module registry and activation state")
+  Component(service_py, "service.py", "Flask service", "HTTP endpoints for module enrollment and status")
 }
 
-Container_Boundary(arb, "Arbiter Service (Flask)") {
-  Component(arb_core, "Arbiter", "Controller", "Registers modules, switches active module, exposes health")
-  Component(managed_mod, "ManagedModule", "Entity", "Tracks module metadata and activation timestamps")
+Container_Boundary(gui, "Desktop Python GUI") {
+  Component(dashboard_py, "dashboard.py", "Tkinter UI", "Displays situational awareness dashboards")
+  Component(mapping_util_py, "mapping_util.py", "Mapping helpers", "Provides geospatial plotting utilities")
 }
 
-Container_Boundary(ui, "Desktop Toolkit") {
-  Component(tk_dashboard, "Tkinter Dashboard", "Tkinter", "Local situational awareness dashboard (manual launch)")
+Container_Boundary(utilities, "Utilities Toolkit") {
+  Component(spectrum_analyzer_py, "spectrum_analyzer.py", "Signal utility", "Visualizes spectrum slices from SDR captures")
+  Component(wavetap_logger_py, "wavetap_logger.py", "Logging helper", "Provides structured logging across services")
 }
 
-ComponentDb(sqlite, "Telemetry Database", "SQLite", "Aircraft, session, and path tables shared by services")
+Component(main_py, "main.py", "Bootstrap", "Entry point wiring together available services")
+ComponentDb(data_store, "Telemetry Database", "SQLite", "Shared aircraft, session, and path storage")
 
-Container_Boundary(future, "Future Signal Pipelines (Planned)") {
-  Component_Ext(vhf, "VHF Voice Pipeline", "TBD", "Aviation-band audio capture, transcription & archival")
-  Component_Ext(fm, "FM Broadcast Pipeline", "TBD", "Broadcast demodulation, RDS metadata, audio analytics")
-  Component_Ext(am, "AM Broadcast Pipeline", "TBD", "Medium-wave monitoring and event detection")
+Container_Boundary(future, "Future WaveTap Extensions (Planned)") {
+  Component_Ext(vhf_service, "VHF Voice Service", "TBD", "Planned aviation-band audio capture, transcription, and archival")
+  Component_Ext(fm_service, "FM Broadcast Service", "TBD", "Planned FM demodulation, RDS metadata, and audio analytics")
+  Component_Ext(am_service, "AM Broadcast Service", "TBD", "Planned medium-wave monitoring and event detection")
 }
 
-Rel(ad_client, publisher, "Feeds decoded frames")
-Rel(publisher, ws_listener, "Streams aircraft JSON")
-Rel(ws_listener, session_tracker, "Updates active snapshot")
-Rel(session_tracker, db_worker, "Queues persistence jobs")
-Rel(db_worker, sqlite, "Writes telemetry", "SQL")
-Rel(adsb_bp, sqlite, "Queries historical data", "SQL")
-Rel(tk_dashboard, adsb_bp, "Fetches summaries", "HTTP/JSON")
-Rel(arb_core, managed_mod, "Maintains registry")
-Rel(arb_core, publisher, "Activates/pauses module", "HTTP")
-Rel(arb_core, db_worker, "Coordinates persistence cadence", "HTTP")
-Rel(vhf, arb_core, "Planned module registration")
-Rel(fm, arb_core, "Planned module registration")
-Rel(am, arb_core, "Planned module registration")
-Rel(vhf, adsb_bp, "Planned dashboards & APIs")
-Rel(fm, adsb_bp, "Planned dashboards & APIs")
-Rel(am, adsb_bp, "Planned dashboards & APIs")
+%% TODO UPDATE CONNECTIONS
+Rel(recieve_adsb_py, adsb_publisher_py, "Feeds decoded frames")
+Rel(adsb_publisher_py, adsb_subscriber_py, "Streams aircraft JSON")
+Rel(adsb_subscriber_py, adsb_db_py, "Queues persistence jobs")
+Rel(adsb_db_py, data_store, "Writes telemetry", "SQL")
+Rel(adsb_module_py, data_store, "Queries historical data", "SQL")
+Rel(dashboard_py, adsb_module_py, "Fetches summaries", "HTTP/JSON")
+Rel(arbiter_controller_py, service_py, "Maintains registry")
+Rel(arbiter_controller_py, adsb_publisher_py, "Controls active module", "HTTP")
+Rel(vhf_service, arbiter_controller_py, "Planned module registration")
+Rel(fm_service, arbiter_controller_py, "Planned module registration")
+Rel(am_service, arbiter_controller_py, "Planned module registration")
+Rel(vhf_service, adsb_module_py, "Planned dashboards & APIs")
+Rel(fm_service, adsb_module_py, "Planned dashboards & APIs")
+Rel(am_service, adsb_module_py, "Planned dashboards & APIs")

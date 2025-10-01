@@ -1,30 +1,31 @@
 C4Deployment
-title "WaveTap - Deployment (Docker Compose Stack)"
+title "WaveTap - C4 Deployment"
+
 
 Deployment_Node(edge_host, "Edge Host", "Linux + RTL-SDR") {
     Node(rtlsdr_hw, "RTL-SDR Hardware", "USB Device") {
         System_Ext(rtlsdr, "USB RTL-SDR", "Captures RF energy")
     }
-    Node(dump_srv, "dump1090 Service", "Process") {
-        Container_Ext(dump1090, "dump1090 Decoder", "C application", "Outputs Mode-S frames via TCP 30002")
+    Node(dump_srv, "Dump1090 Service", "Process") {
+        Container_Ext(dump1090, "Dump1090 Decoder", "C application", "Outputs Mode-S frames via TCP 30002")
     }
-    Node(pub_container, "adsb-publisher", "Docker + Python") {
-        Container(publisher, "adsb-publisher", "Python asyncio", "Publishes aircraft snapshots over WebSocket 8443")
+    Node(future_node, "Audio Services", "Planned - TBD") {
+        Container_Ext(vhf_service, "VHF Voice Pipeline", "Planned", "Future aviation-band audio capture & transcription")
+        Container_Ext(broadcast_service, "FM/AM Pipelines", "Planned", "Future broadcast demodulation & analytics")
+    }
+    Node(sdr_cap, "SDR Capture", "Docker + Python") {
+        Container(publisher, "adsb-publisher", "Python", "Publishes aircraft snapshots over WebSocket 8443")
     }
 }
 
 Deployment_Node(compose_stack, "WaveTap Compose Stack", "Linux Docker Engine") {
-    Node(sub_container, "adsb-subscriber", "Docker + Python") {
-        Container(subscriber, "adsb-subscriber", "Python asyncio", "Consumes WebSocket stream and persists telemetry")
-    }
-    Node(api_container, "database-api", "Docker + Flask") {
-        Container(api, "WaveTap API", "Flask + Gunicorn", "Dashboards, REST endpoints, capability placeholders")
+    Node(api_container, "database-api", "Docker + Python") {
+        Container(subscriber, "adsb-subscriber", "Python", "Consumes decoded ADS-B stream and stores telemetry")
+        ContainerDb(sqlite, "Telemetry Database", "SQLite", "Stored aircraft history and tracks")
+        Container(api, "WaveTap API", "Python / Flask API", "Web Dashboards, REST Endpoints")
     }
     Node(arb_container, "arbiter", "Docker + Flask") {
-        Container(arbiter, "Arbiter Service", "Flask + Gunicorn", "Manages module registry and activation")
-    }
-    Node(db_volume, "adsb-data Volume", "Docker Volume") {
-        ContainerDb(sqlite, "Telemetry Database", "SQLite", "Shared aircraft history and tracks")
+        Container(arbiter, "Arbiter Service", "Flask", "Manages SDR control and module services")
     }
 }
 
@@ -37,25 +38,22 @@ Deployment_Node(client_env, "Operations Workstation", "Browser + Python") {
     }
 }
 
-Deployment_Node(future_stack, "Future Signal Pipelines", "Planned") {
-    Node(vhf_node, "VHF Voice Services", "TBD") {
-        Container_Ext(vhf_service, "VHF Voice Pipeline", "Planned", "Future aviation-band audio capture & transcription")
-    }
-    Node(broadcast_node, "FM/AM Services", "TBD") {
-        Container_Ext(broadcast_service, "FM/AM Pipelines", "Planned", "Future broadcast demodulation & analytics")
-    }
-}
+%% Future Development Nodes
+Rel(rtlsdr, vhf_service, "IQ Stream")
+Rel(rtlsdr, broadcast_service, "IQ Stream")
+%% Rel(vhf_service, arbiter, "Planned module registration")
+%% Rel(vhf_service, api, "Planned data publishing")
 
-Rel(rtlsdr, dump1090, "Feeds IQ via USB")
-Rel(dump1090, publisher, "Streams Mode-S frames", "TCP 30002")
-Rel(publisher, subscriber, "Aircraft JSON stream", "WebSocket 8443")
-Rel(subscriber, sqlite, "Writes telemetry", "SQLite")
-Rel(api, sqlite, "Reads telemetry", "SQL")
-Rel(arbiter, publisher, "Activate/stop module", "HTTP (internal)")
-Rel(arbiter, subscriber, "Coordinate persistence cadence", "HTTP (internal)")
-Rel(ui_web, api, "Dashboards & REST", "HTTPS 5000")
-Rel(ui_tk, api, "Queries aircraft data", "HTTP/JSON")
-Rel(vhf_service, arbiter, "Planned module registration")
-Rel(vhf_service, api, "Planned data publishing")
-Rel(broadcast_service, arbiter, "Planned module registration")
-Rel(broadcast_service, api, "Planned data publishing")
+Rel(rtlsdr, dump1090, "IQ Stream")
+Rel(dump1090, publisher, "Streams raw Mode-S frames", "TCP 30002")
+Rel(publisher, subscriber, "Decoded ADS-B Data (JSON)", "WebSocket 8443")
+
+%% Rel(subscriber, sqlite, "Writes telemetry", "SQLite")
+%% Rel(api, sqlite, "Reads telemetry", "SQL")
+%% Rel(arbiter, publisher, "Activate/stop module", "HTTP (internal)")
+%% Rel(arbiter, subscriber, "Coordinate persistence cadence", "HTTP (internal)")
+%% Rel(ui_web, api, "Dashboards & REST", "HTTPS 5000")
+%% Rel(ui_tk, api, "Queries aircraft data", "HTTP/JSON")
+
+%% Rel(broadcast_service, arbiter, "Planned module registration")
+%% Rel(broadcast_service, api, "Planned data publishing")

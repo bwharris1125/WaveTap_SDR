@@ -1,29 +1,33 @@
 C4Context
-title "WaveTap - System Context (Current & Planned)"
+title "WaveTap - C4 System Context"
 
-Person(user, "Operations Analyst", "Browses dashboards and manages SDR modules")
 
-System_Ext(aircraft, "Aircraft", "Broadcast ADS-B frames on 1090 MHz")
-System_Ext(rtlsdr, "USB RTL-SDR", "Captures RF energy from antennas")
-System_Ext(dump1090, "dump1090 Decoder", "Transforms Mode-S bits into TCP stream")
+System_Ext(aircraft, "Aircraft Mode-S", "Broadcast ADS-B frames on 1090 MHz")
+System_Ext(future_voice, "VHF Broadcast (Planned)", "Aviation-band audio capture and playback")
+System_Ext(future_broadcast, "FM/AM Broadcast (Planned)", "FM/AM demodulation and playback")
+
+Person(user, "User", "Interacts with GUI or Web API")
 
 System_Boundary(wavetap, "WaveTap Platform") {
-    System(control_center, "WaveTap Control Center", "Flask UI + REST endpoints for ADS-B telemetry")
-    System(arbiter, "Arbiter Service", "Flask control plane for registering and coordinating SDR modules")
-    SystemDb(data_store, "Telemetry Store", "SQLite database shared across services")
+    System_Ext(rtlsdr, "USB RTL-SDR", "Receives RF signals over the air")
+    System(sdr_cap, "SDR Capture Service", "Captures and processes radio signals from RTL-SDR hardware")
+    System(database_api, "WaveTap API", "Flask REST API endpoints for interface and web dashboards")
+    System(arbiter, "Arbiter Service (Planned)", "Flask control for coordinating and configuring SDR modules")
+    SystemDb(data_store, "Data Store", "SQLite database shared across services")
+    System(gui, "Desktop Python GUI", "Optional local situational awareness client")
 }
 
-System_Ext(future_voice, "VHF Voice Capture (Planned)", "Roadmap: aviation-band audio capture, transcription")
-System_Ext(future_broadcast, "Broadcast Analytics (Planned)", "Roadmap: FM/AM demodulation and analytics")
 
-Rel(aircraft, rtlsdr, "Broadcast RF")
-Rel(rtlsdr, dump1090, "USB IQ sampled")
-Rel(dump1090, control_center, "Mode-S messages over TCP 30002 via publisher")
-Rel(control_center, data_store, "Persists aircraft telemetry")
-Rel(user, control_center, "Explores dashboards & APIs", "HTTPS/WebSocket")
-Rel(user, arbiter, "Manages module lifecycle", "HTTPS/JSON")
-Rel(arbiter, control_center, "Coordinates module state")
-Rel(future_voice, arbiter, "Future module registration")
-Rel(future_broadcast, arbiter, "Future module registration")
-Rel(future_voice, control_center, "Planned data ingest & dashboards")
-Rel(future_broadcast, control_center, "Planned data ingest & dashboards")
+Rel(aircraft, rtlsdr, "Broadcast Mode-S")
+Rel(future_voice, rtlsdr, "Broadcast VHF")
+Rel(future_broadcast, rtlsdr, "Broadcast FM/AM")
+Rel(rtlsdr, sdr_cap, "USB IQ sampled")
+
+Rel(sdr_cap, data_store, "Writes secoded ADS-B data")
+Rel(data_store, database_api, "Reads ADS-B data")
+
+Rel(user, database_api, "Explores dashboards & APIs", "HTTPS/WebSocket")
+Rel(user, gui, "Interacts with system through local GUI", "Python Tkinter")
+Rel(gui, database_api, "Fetches summaries", "Rest API")
+Rel(database_api, arbiter, "Manages SDR modules", "HTTPS/JSON")
+Rel(arbiter, rtlsdr, "Coordinates SDR configuration")
