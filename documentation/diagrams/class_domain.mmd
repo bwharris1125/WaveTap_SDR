@@ -1,93 +1,113 @@
 classDiagram
+title WaveTap - Class Domain Model
 
-class TuningRequest {
-  +uuid id
-  +float centerHz
-  +float spanHz
-  +List~string~ decoderIds
-  +datetime requestedAt
-  +string status
-  +validate()
+class ADSBClient {
+	+aircraft_data: Dict[str, Dict]
+	+handle_messages(messages: List[Tuple[str, float]])
+	-_update_position()
+	-_annotate_distance()
 }
 
-class Arbiter {
-  -Queue~TuningRequest~ pending
-  +submit(req:TuningRequest)
-  +processNext()
-  +currentWindow():BandWindow
+class ADSBPublisher {
+	+handler(websocket)
+	+publish_data()
+	+run()
+	+close()
+	-clients: Set
+	-src_client: ADSBClient
 }
 
-class BandWindow {
-  +float center
-  +float span
-  +fits(decoder:DecoderSpec):bool
+ADSBPublisher *-- ADSBClient
+
+class ADSBSubscriber {
+	+setup_db(db_path: Optional[str])
+	+connect_and_listen(retry_delay: float, max_retry_delay: float)
+	+save_to_db()
+	-db_worker: DBWorker
+	-aircraft_data: Dict
 }
 
-class DecoderSpec {
-  +string id
-  +float requiredBandwidth
-  +float offsetHz
+class DBWorker {
+	+enqueue(task: Tuple)
+	+stop()
+	+run()
+	-q: Queue
+	-conn: sqlite3.Connection
 }
 
-class IQFrame {
-  +int sequence
-  +bytes iData
-  +bytes qData
-  +float sampleRate
-  +timestamp ts
-}
-
-class DecoderBase {
-  <<abstract>>
-  +configure(window:BandWindow)
-  +consume(frame:IQFrame)
-  +emit()
-}
-
-class AdsbDecoder {
-  +crcOk(percent:float)
-  +parseDF(msg:bytes)
-}
-
-class FmDecoder {
-  +demodulate(frame:IQFrame)
-  +audioBuffer():bytes
-}
-
-class CaptureService {
-  -DeviceController device
-  +start()
-  +tune(center:float, sampleRate:float)
-  +stream():IQFrame
-}
-
-class DeviceController {
-  +open(serial:string)
-  +setFreq(freq:float)
-  +setGain(gain:float)
-  +setSampleRate(rate:float)
-}
-
-class StateRepository {
-  +updateAircraft(icao:string, state:AircraftState)
-  +latest(icao:string):AircraftState
-}
+ADSBSubscriber *-- DBWorker
 
 class AircraftState {
-  +string icao
-  +float lat
-  +float lon
-  +int altitude
-  +int heading
-  +datetime lastSeen
+	+icao: str
+	+callsign: Optional[str]
+	+session_id: Optional[str]
+	+last_seen: float
 }
 
-Arbiter --> BandWindow
-Arbiter --> TuningRequest
-Arbiter --> DecoderSpec
-CaptureService --> DeviceController
-CaptureService --> IQFrame
-DecoderBase <|-- AdsbDecoder
-DecoderBase <|-- FmDecoder
-AdsbDecoder --> AircraftState
-StateRepository --> AircraftState
+DBWorker ..> AircraftState : persists telemetry
+
+class ManagedModule {
+	+name: str
+	+description: Optional[str]
+	+start()
+	+stop()
+	+get_status(): Dict
+	-_active: bool
+	-_activated_at: datetime
+}
+
+class SDRModule {
+	<<abstract>>
+	+start()
+	+stop()
+	+get_status(): Dict
+}
+
+ManagedModule ..|> SDRModule
+
+class Arbiter {
+	+register_module(name: str, module: SDRModule)
+	+switch_to(name: str)
+	+get_active_status(): Optional[Dict]
+	+stop_all()
+	-modules: Dict[str, SDRModule]
+	-active_module: Optional[str]
+}
+
+Arbiter o--> SDRModule
+
+class ArbiterService {
+	<<Flask service>>
+	+register_module(name: str)
+	+delete_module(name: str)
+	+activate_module(name: str)
+	+get_status()
+	-controller: Arbiter
+}
+
+ArbiterService *-- Arbiter
+ArbiterService *-- ManagedModule
+
+class WaveTapAPI {
+	<<Flask app>>
+	+home()
+	+vhf_dashboard()
+	+fm_dashboard()
+	+am_dashboard()
+	+other_dashboard()
+	-app: Flask
+}
+
+class ADSBBlueprint {
+	<<Flask Blueprint>>
+	+dashboard()
+	+live_data()
+	+historical_data()
+	+api_aircraft(window: int)
+	+api_aircraft_detail(icao: str)
+	-_get_connection()
+	-_filter_recent_aircraft()
+}
+
+WaveTapAPI *-- ADSBBlueprint
+ADSBBlueprint ..> DBWorker : queries telemetry

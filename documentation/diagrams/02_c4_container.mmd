@@ -1,40 +1,47 @@
 C4Container
-title "WaveTap - Container View"
+title "WaveTap - C4 Container View"
 
-Person(user, "Client User", "Browser / Dashboard / CLI")
 
-System_Ext(aircraft, "Aircraft", "Broadcasts ADS-B and Voice Signals")
-System_Ext(rf_source, "RF Source", "Broadcasts RF Signals (ex. FM Radio)")
-
-System_Boundary(wt, "WaveTap") {
-  Container(ui, "Local UI / Dashboard", "Python/TKinter", "Tables, maps, streams")
-  Container(api, "API Gateway", "FastAPI/Express", "REST + WebSocket aggregation")
-  Container(arb, "Coordinator / Arbiter", "Python", "Manages tuning, decoding, events")
-  Container(sdr_cap, "SDR Capture Service", "Python + dump1090", "Owns RTL-SDR; streams IQ")
-  ContainerDb(db, "Storage Database", "SQL", "Historical tracks, logs")
+System_Boundary(wavetap, "WaveTap Stack") {
+  Container(database_api, "WaveTap API", "Rest API & Web Interface")
+  Container(gui, "Desktop Python GUI", "Optional")
+  ContainerDb(data_store, "Data Store", "SQLite Database")
+  Container(arbiter, "Arbiter Service (Planned)", "SDR Controller")
+  Container(sdr_cap, "SDR Capture Service", "SDR Decoder / Recorder")
+  System_Ext(rtlsdr, "USB RTL-SDR", "Captures RF energy")
 }
 
-System_Boundary(hw, "Hardware & Libraries") {
-  System_Ext(sdr, "USB RTL-SDR", "Software Defined Radio (SDR)")
-  System_Ext(pymodes, "pyModeS", "Library for decoding ADS-B messages")
-  System_Ext(dump1090, "dump1090", "Library for decoding 1090 MHz aviation signals")
+System_Boundary("rf_spectrum", "RF Spectrum") {
+  System_Ext(aircraft, "Aircraft Mode-S", "Broadcast ADS-B frames on 1090 MHz")
+  System_Ext(future_voice, "VHF Broadcast (Planned)", " VHF band audio capture and playback")
+  System_Ext(future_broadcast, "FM/AM Broadcast (Planned)", "FM/AM demodulation and playback")
 }
 
-Rel(aircraft, sdr, "ADS-B and VHF")
-Rel(rf_source, sdr, "RF Signals")
-Rel(sdr, sdr_cap, "USB Connection")
-Rel(sdr_cap, pymodes, "Uses")
-Rel(sdr_cap, dump1090, "Uses")
-Rel(user, ui, "Uses")
-Rel(ui, api, "Uses")
-Rel(api, arb, "Requests tuning")
-Rel(arb, sdr_cap, "tuning commands")
-Rel(sdr_cap, arb, "IQ stream")
-Rel(sdr_cap, db, "Persists tracks", "Logs")
-Rel(db, api, "Provides historical data")
-%% Rel(dec_fm, api, "Streams audio frames", "WebSocket")
-%% Rel(api, db, "Reads detected aircraft", "WebSocket")
-%% Rel(sdr_cap, dec_atc, "Voice Stream", "Mp3 stream")
-%% Rel(dec_atc, api, "Streams audio frames", "WebSocket")
-%% Rel(sdr_cap, dec_adsb, "Streams IQ data")
-%% Rel(sdr_cap, dec_fm, "Streams audio frames", "WebSocket")
+System_Boundary(wavetap_future, "Future WaveTap Extensions (Planned)") {
+  Container_Ext(vhf_service, "VHF Voice Service (Planned)", "", "Future aviation-band audio playback")
+  Container_Ext(fm_service, "FM Broadcast Service (Planned)", "", "Future FM monitoring & playback")
+  Container_Ext(am_service, "AM Broadcast Service (Planned)", "", "Future AM monitoring & playback")
+}
+
+Person(user, "User", "Uses dashboards and module console")
+
+
+Rel(arbiter, rtlsdr, "Control over WebSocket")
+Rel(database_api, arbiter, "Planned Control Path")
+
+Rel(aircraft, rtlsdr, "Broadcast Mode-S")
+Rel(future_voice, rtlsdr, "Broadcast VHF")
+Rel(future_broadcast, rtlsdr, "Broadcast FM/AM")
+
+Rel(rtlsdr, vhf_service, "Planned IQ Stream")
+Rel(rtlsdr, fm_service, "Planned IQ Stream")
+Rel(rtlsdr, am_service, "Planned IQ Stream")
+
+Rel(rtlsdr, sdr_cap, "IQ Stream")
+Rel(sdr_cap, data_store, "Decoded ADS-B Data (JSON)")
+
+Rel(data_store, database_api, "Reads stored data")
+Rel(database_api, gui, "Uses REST Endpoints")
+
+Rel(user, database_api, "Web Interface")
+Rel(user, gui, "Python Tkinter Interface")

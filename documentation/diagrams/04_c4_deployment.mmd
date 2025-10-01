@@ -1,57 +1,62 @@
 C4Deployment
-title "WaveTap - Deployment (Containerized)"
+title "WaveTap - C4 Deployment"
 
-Deployment_Node(edge, "Edge Host", "Linux") {
-    Node(rtlsdr_usb, "RTL-SDR Dongle", "Ext. Hardware") {
-    System_Ext(sdr, "USB RTL-SDR", "Software Defined Radio (SDR)")
-    }
-    Node(cap_pod, "SDR Capture Pod", "Docker") {
-        Component(pyrtlsdr, "pyrtlsdr", "Python", "RTL-SDR Interface Library")
-        Component(pymodes, "PyModeS", "Python", "ADS-B Decoding Library")
-        Component(sdr_cap, "SDR Capture Service", "Python", "Recieve RF & Provide IQ")
-    }
-}
 
-Deployment_Node(local, "Local Windows Host", "Windows 10/11") {
-    Node(ui_dev, "UI Environment", "Python") {
-        Container(ui, "Local GUI", "Python", "Provides UI & Data Display")
+Deployment_Node(edge_host, "Edge Host", "Linux + RTL-SDR") {
+    Node(rtlsdr_hw, "RTL-SDR Hardware", "USB Device") {
+        System_Ext(rtlsdr, "USB RTL-SDR", "Captures RF energy")
     }
-}
-
-Deployment_Node(standalone, "Processing Server", "Linux") {
-    %% Node(msg, "Message Bus", "NATS/Kafka") {
-    %%     Component(msg_bus, "Message Bus", "Handles IQ data streams")
-    %% } %% TODO: evaluate if this is needed on diagram or if this is what makes sense to use
-    Node(coord_pod, "Coordinator Pod", "Docker") {
-        Component(arb, "Coordinator / Arbiter", "Python", "Manages SDR Control")
-        Component(dec_adsb, "ADS-B Decoder", "Python", "Decodes ADS-B signals")
-        Component(dec_fm, "Future Decoder", "Python", "Decodes other RF signal")
+    Node(dump_srv, "Dump1090 Service", "Process") {
+        Container_Ext(dump1090, "Dump1090 Decoder", "C application", "Outputs Mode-S frames via TCP 30002")
     }
-    Node(db_pod, "API/Database Pod", "Docker") {
-        Component(api, "API Gateway", "FastAPI", "Provides API access to clients")
-        ComponentDb(db, "Storage Database", "SQL", "Historical tracks, logs")
+    Node(future_node, "Audio Services", "Planned - TBD") {
+        Container_Ext(vhf_service, "VHF Voice Pipeline", "Planned", "Future aviation-band audio capture & transcription")
+        Container_Ext(broadcast_service, "FM/AM Pipelines", "Planned", "Future broadcast demodulation & analytics")
+    }
+    Node(sdr_cap, "SDR Capture", "Docker + Python") {
+        Container(publisher, "adsb-publisher", "Python", "Publishes aircraft snapshots over WebSocket 8443")
     }
 }
 
+Deployment_Node(compose_stack, "WaveTap Compose Stack", "Linux Docker Engine") {
+    Node(arb_container, "arbiter", "Docker + Flask") {
+        Container(arbiter, "Arbiter Service", "Flask", "Manages SDR control and module services")
+    }
+    Node(api_container, "database-api", "Docker + Python") {
+        Container(subscriber, "adsb-subscriber", "Python", "Consumes decoded ADS-B stream and stores telemetry")
+        ContainerDb(sqlite, "Telemetry Database", "SQLite", "Stored aircraft history and tracks")
+        Container(api, "WaveTap API", "Python / Flask API", "Web Dashboards, REST Endpoints")
+    }
+}
 
-Rel(sdr, sdr_cap, "command and status")
-Rel(sdr, pyrtlsdr, "USB connection to")
-Rel(pyrtlsdr, sdr_cap, "sends IQ stream")
-Rel(pyrtlsdr, pymodes, "sends IQ stream")
-Rel(pymodes, sdr_cap, "sends decoded ADS-B data to")
+Deployment_Node(client_env, "Operations Workstation", "Browser + Python") {
+    Node(browser, "Web Browser", "Chrome/Edge") {
+        Container_Ext(ui_web, "WaveTap Web Interface", "HTML/JS", "Uses Flask endpoints at :5000")
+    }
+    Node(desktop_tools, "Desktop Toolkit", "Python") {
+        Container(ui_tk, "Tkinter Dashboard", "Tkinter", "Optional local monitoring client")
+    }
+}
 
-%% Rel(sdr_cap, msg_bus, "Publishes IQ data to")
-%% Rel(dec_adsb, msg_bus, "Subscribes to IQ data")
-%% Rel(dec_fm, msg_bus, "Subscribes to IQ data")
+%% Future Development Nodes
+Rel(rtlsdr, vhf_service, "IQ Stream")
+Rel(rtlsdr, broadcast_service, "IQ Stream")
+%% Rel(vhf_service, arbiter, "Planned module registration")
+%% Rel(vhf_service, api, "Planned data publishing")
 
-Rel(sdr_cap, api, "sends decoded data to")
-Rel(api, db, "Reads from and writes to")
-Rel(api, arb, "Controls SDR", "REST")
-Rel(ui, api, "Interacts with", "HTTP/WebSocket")
+Rel(rtlsdr, dump1090, "IQ Stream")
+Rel(dump1090, publisher, "Streams raw Mode-S frames", "TCP 30002")
+Rel(publisher, subscriber, "Decoded ADS-B Data (JSON)", "WebSocket 8443")
 
-Rel(arb, sdr_cap, "Sends tuning commands to")
-Rel(arb, dec_fm, "Sends IQ stream")
-Rel(arb, dec_adsb, "Sends IQ stream")
+Rel(subscriber, sqlite, "Writes telemetry", "SQLite")
+Rel(sqlite, api, "Reads telemetry", "SQL")
+Rel(api, arbiter, "Planned Control Path")
+Rel(arbiter, rtlsdr, "Controls SDR configuration", "WebSocket")
+%% Rel(api, sqlite, "Reads telemetry", "SQL")
+%% Rel(arbiter, publisher, "Activate/stop module", "HTTP (internal)")
+%% Rel(arbiter, subscriber, "Coordinate persistence cadence", "HTTP (internal)")
+Rel(api, ui_web, "Dashboards & REST", "HTTPS 5000")
+Rel(api, ui_tk, "Queries aircraft data", "HTTP/JSON")
 
-Rel(dec_adsb, api, "Provides decoded data to", "REST")
-Rel(dec_fm, api, "Provides decoded data to", "REST")
+%% Rel(broadcast_service, arbiter, "Planned module registration")
+%% Rel(broadcast_service, api, "Planned data publishing")

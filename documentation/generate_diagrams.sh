@@ -33,6 +33,24 @@ detect_chrome() {
             return 0
         fi
     done
+
+    # Fall back to Puppeteer-managed cache installs (e.g., npx puppeteer browsers install chrome@...)
+    local puppeteer_cache="$HOME/.cache/puppeteer"
+    if [ -d "$puppeteer_cache" ]; then
+        # Search for chrome or chrome-headless-shell executables in cache directories, prefer newest
+        local cache_candidates=()
+        while IFS= read -r path; do
+            cache_candidates+=("$path")
+        done < <(find "$puppeteer_cache" -type f \( -name "chrome" -o -name "chrome-headless-shell" \) -perm -111 2>/dev/null | sort -r)
+
+        for c in "${cache_candidates[@]}"; do
+            if [ -x "$c" ]; then
+                export PUPPETEER_EXECUTABLE_PATH="$c"
+                echo "Found Puppeteer cache browser: $c -> set PUPPETEER_EXECUTABLE_PATH"
+                return 0
+            fi
+        done
+    fi
 }
 
 detect_chrome

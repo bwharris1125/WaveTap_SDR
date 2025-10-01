@@ -1,32 +1,33 @@
 C4Context
-title "WaveTap - System Context"
+title "WaveTap - C4 System Context"
 
-System_Boundary(b1, "WaveTap") {
-    Boundary(b2, "Hardware") {
-        System_Ext(sdr, "USB RTL-SDR", "Hardware for capturing RF signals")
-    }
-    System(ui_service, "UI Service", "Provides user interface for data visualization")
-    SystemDb(data_storage, "Data Storage Service", "Stores decoded data for analysis")
-    System(wavetap, "WaveTap SDR Platform", "Processes and decodes RF signals")
+
+System_Ext(aircraft, "Aircraft Mode-S", "Broadcast ADS-B frames on 1090 MHz")
+System_Ext(future_voice, "VHF Broadcast (Planned)", "Aviation-band audio capture and playback")
+System_Ext(future_broadcast, "FM/AM Broadcast (Planned)", "FM/AM demodulation and playback")
+
+Person(user, "User", "Interacts with GUI or Web API")
+
+System_Boundary(wavetap, "WaveTap Platform") {
+    System_Ext(rtlsdr, "USB RTL-SDR", "Receives RF signals over the air")
+    System(sdr_cap, "SDR Capture Service", "Captures and processes radio signals from RTL-SDR hardware")
+    System(database_api, "WaveTap API", "Flask REST API endpoints for interface and web dashboards")
+    System(arbiter, "Arbiter Service (Planned)", "Flask control for coordinating and configuring SDR modules")
+    SystemDb(data_store, "Data Store", "SQLite database shared across services")
+    System(gui, "Desktop Python GUI", "Optional local situational awareness client")
 }
 
-Boundary(b0, "Radio Frequencies") {
-    System_Ext(fm_radio, "Other Radio", "Broadcasts RF Signals")
-    System_Ext(adsb_transmitter, "ADS-B Transmitter", "Broadcasts Aircraft Data")
-    System_Ext(vhf_radio, "VHF Radio", "Broadcasts ATC Comms")
-}
 
-Rel(fm_radio, sdr, "Broadcasts signals to", "down")
-Rel(adsb_transmitter, sdr, "Broadcasts signals to", "down")
-Rel(vhf_radio, sdr, "Broadcasts signals to", "down")
-Rel(sdr, wavetap, "Captures signals for", "right")
-Rel(wavetap, data_storage, "Stores decoded data in", "down")
-Rel(data_storage, ui_service, "Provides data to", "right")
-Rel(ui_service, wavetap, "Interacts with", "up", "HTTPS/WebSocket")
+Rel(aircraft, rtlsdr, "Broadcast Mode-S")
+Rel(future_voice, rtlsdr, "Broadcast VHF")
+Rel(future_broadcast, rtlsdr, "Broadcast FM/AM")
+Rel(rtlsdr, sdr_cap, "USB IQ sampled")
 
-%%UpdateElementStyle(ui_service, $fontColor="red", $bgColor="grey", $borderColor="red")
-%% UpdateRelStyle(ui_service, wavetap, $textColor="blue", $lineColor="blue", $offsetX="5")
-%% UpdateRelStyle(sdr, wavetap, $textColor="blue", $lineColor="blue", $offsetY="-10")
-%% UpdateRelStyle(data_storage, ui_service, $textColor="blue", $lineColor="blue", $offsetY="-40", $offsetX="-50")
+Rel(sdr_cap, data_store, "Writes secoded ADS-B data")
+Rel(data_store, database_api, "Reads ADS-B data")
 
-%% UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+Rel(user, database_api, "Explores dashboards & APIs", "HTTPS/WebSocket")
+Rel(user, gui, "Interacts with system through local GUI", "Python Tkinter")
+Rel(gui, database_api, "Fetches summaries", "Rest API")
+Rel(database_api, arbiter, "Manages SDR modules", "HTTPS/JSON")
+Rel(arbiter, rtlsdr, "Coordinates SDR configuration")
