@@ -1,11 +1,22 @@
 flowchart LR
-  A[RTL-SDR Hardware] --> B[SDR Capture Service]
-  B -->|IQ Stream| C[(Message Bus)]
-  C --> D[ADS-B Decoder]
-  C --> E[FM Decoder]
-  D -->|Aircraft State| F[(Redis Cache)]
-  D -->|Historical Tracks| G[(Postgres)]
-  E -->|Audio Frames| H[API Gateway]
-  F --> H
-  G --> H
-  H --> I[Web UI / Clients]
+%% title "WaveTap - Data Flow Diagram"
+
+	rtl["USB RTL-SDR"] --> dump["dump1090 / rtl_tcp\n(external decoder)"]
+	dump --> pub["ADSBPublisher\n(sdr_cap/adsb_publisher.py)"]
+	pub -->|"WebSocket JSON"| sub["ADSBSubscriber\n(database_api/adsb_subscriber.py)"]
+	sub -->|"enqueue tasks"| worker["DBWorker thread\n(database_api/adsb_db.py)"]
+	worker --> db[("SQLite telemetry store\nadsb_data.db")]
+
+	browser["Operator browser"] -->|"HTTPS"| api["WaveTap API\n(database_api/wavetap_api.py)"]
+	api -->|"Flask blueprint"| bp["ADS-B Blueprint\n(database_api/adsb_module.py)"]
+	bp -->|"SQL queries"| db
+	db -->|"telemetry rows"| bp
+	bp -->|"templates / JSON"| api
+	api -->|"Dashboards & REST"| browser
+
+	pub --> test["adsb_test_print.py\nCLI monitor"]
+
+	%% Optional local bootstrap for integrated runs
+	main["main.py orchestration"] -.-> pub
+	main -.-> sub
+	main -.-> api

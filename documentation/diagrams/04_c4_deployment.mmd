@@ -19,19 +19,19 @@ Deployment_Node(edge_host, "Edge Host", "Linux + RTL-SDR") {
 }
 
 Deployment_Node(compose_stack, "WaveTap Compose Stack", "Linux Docker Engine") {
+    Node(arb_container, "arbiter", "Docker + Flask") {
+        Container(arbiter, "Arbiter Service", "Flask", "Manages SDR control and module services")
+    }
     Node(api_container, "database-api", "Docker + Python") {
         Container(subscriber, "adsb-subscriber", "Python", "Consumes decoded ADS-B stream and stores telemetry")
         ContainerDb(sqlite, "Telemetry Database", "SQLite", "Stored aircraft history and tracks")
         Container(api, "WaveTap API", "Python / Flask API", "Web Dashboards, REST Endpoints")
     }
-    Node(arb_container, "arbiter", "Docker + Flask") {
-        Container(arbiter, "Arbiter Service", "Flask", "Manages SDR control and module services")
-    }
 }
 
 Deployment_Node(client_env, "Operations Workstation", "Browser + Python") {
     Node(browser, "Web Browser", "Chrome/Edge") {
-        Container(ui_web, "WaveTap Control Center", "HTML/JS", "Uses Flask endpoints at :5000")
+        Container_Ext(ui_web, "WaveTap Web Interface", "HTML/JS", "Uses Flask endpoints at :5000")
     }
     Node(desktop_tools, "Desktop Toolkit", "Python") {
         Container(ui_tk, "Tkinter Dashboard", "Tkinter", "Optional local monitoring client")
@@ -48,12 +48,15 @@ Rel(rtlsdr, dump1090, "IQ Stream")
 Rel(dump1090, publisher, "Streams raw Mode-S frames", "TCP 30002")
 Rel(publisher, subscriber, "Decoded ADS-B Data (JSON)", "WebSocket 8443")
 
-%% Rel(subscriber, sqlite, "Writes telemetry", "SQLite")
+Rel(subscriber, sqlite, "Writes telemetry", "SQLite")
+Rel(sqlite, api, "Reads telemetry", "SQL")
+Rel(api, arbiter, "Planned Control Path")
+Rel(arbiter, rtlsdr, "Controls SDR configuration", "WebSocket")
 %% Rel(api, sqlite, "Reads telemetry", "SQL")
 %% Rel(arbiter, publisher, "Activate/stop module", "HTTP (internal)")
 %% Rel(arbiter, subscriber, "Coordinate persistence cadence", "HTTP (internal)")
-%% Rel(ui_web, api, "Dashboards & REST", "HTTPS 5000")
-%% Rel(ui_tk, api, "Queries aircraft data", "HTTP/JSON")
+Rel(api, ui_web, "Dashboards & REST", "HTTPS 5000")
+Rel(api, ui_tk, "Queries aircraft data", "HTTP/JSON")
 
 %% Rel(broadcast_service, arbiter, "Planned module registration")
 %% Rel(broadcast_service, api, "Planned data publishing")
