@@ -1,272 +1,144 @@
-# WaveTap SDR Utilities (CS7319 - Software Architecture)
+# WaveTap SDR Platform
 
-Repository for SMU Software Architecture (CS7319) Class Project
 <p align="center">
-   <img src="documentation/wavetap_icon.png" 
-   alt="WaveTap Logo" width="200"/>
-   <div style="text-align: center;">
-      <strong><em>ADS-B and SDR Utilities</em></strong>
-   </div>
+  <img src="documentation/wavetap_icon.png" alt="WaveTap Logo" width="200" />
+  <div align="center"><strong><em>SDR Capture, Utilities, and Visualization</em></strong></div>
 </p>
 
-## Containerized microservices
+WaveTap is a modular software-defined radio (SDR) toolkit built for the SMU CS7319 Software Architecture course. The current implementation focuses on receiving ADS-B traffic from an RTL-SDR, publishing decoded aircraft telemetry over WebSocket, persisting it to SQLite, and surfacing dashboards through a Flask UI. Each major capability is packaged as its own Python module and can be composed together locally or via Docker.
 
-Docker build contexts for each deployable component live under `docker/` so the ADS-B capture pipeline can run as independent services:
+## Highlights
 
-| Service | Context | Default command | Ports |
-| --- | --- | --- | --- |
-| SDR capture (publisher) | `docker/sdr_cap` | `python -m sdr_cap.adsb_publisher` | 8443 (WebSocket) |
-| ADS-B subscriber | `docker/database_api` | `python -m adsb_subscriber --uri … --db …` | n/a |
-| WaveTap API | `docker/database_api` | `gunicorn wavetap_api:app` | 5000 (HTTP) |
-| Arbiter control plane | `docker/arbiter` | `gunicorn arbiter.service:app` | 8000 (HTTP) |
+- **End-to-end ADS-B pipeline** – `sdr_cap` ingests dump1090 frames, `database_api` persists telemetry, and the WaveTap UI exposes dashboards and REST endpoints.
+- **Production-style topology** – the same Python code can run locally or inside Docker containers using the provided Compose file.
+- **Extensible control plane** – an Arbiter service is scaffolded to manage future SDR modules and activation policies.
+- **Documented architecture** – Mermaid-based C4, class, and data-flow diagrams live alongside the code and are regenerable with a single script.
 
-> The subscriber and API reuse the same base image; the active command is selected via Docker Compose.
+## Repository layout
 
-### Quick start with Docker Compose
+```
+├── docker/                    # Container build contexts for each service
+│   ├── arbiter/
+│   ├── database_api/
+│   └── sdr_cap/
+├── documentation/             # Diagrams, examples, and project collateral
+│   ├── diagrams/              # Mermaid sources and rendered PNGs
+│   └── diagrams_overview.md   # Guide to the architecture views
+├── src/
+│   ├── arbiter/               # Flask control plane and module registry
+│   ├── database_api/          # Flask UI, ADS-B blueprint, subscriber, DB worker
+│   ├── gui/                   # Desktop dashboard prototypes and mapping tools
+│   ├── sdr_cap/               # ADS-B publisher and capture helpers
+│   ├── utilities/             # Shared logging and spectrum analysis utilities
+│   └── main.py                # Local bootstrap that spins up the stack
+├── tests/                     # Pytest suites covering publisher, subscriber, arbiter, and GUI glue
+├── tools/                     # One-off utilities (e.g., ADS-B helpers)
+├── docker-compose.yml         # Orchestrates the microservices for development
+├── requirements.txt           # Python dependencies
+├── pyproject.toml / pytest.ini
+├── dev-env/                   # Environment bootstrap scripts
+└── README.md, LICENSE, TODO.md
+```
+
+## Architecture at a glance
+
+- **System & container views** – see `documentation/diagrams/img_output/01_c4_system_context.png` and `02_c4_container.png` for the high-level topology.
+- **Components & classes** – `03_c4_components.png` and `class_domain.png` drill into the Python modules and relationships actually implemented.
+- **Runtime flow** – `flow_data.png` documents the real data path from the RTL-SDR through dump1090, the publisher/subscriber pipeline, SQLite, and the Flask UI.
+
+The diagrams are regenerated from the Mermaid sources using `bash documentation/generate_diagrams.sh`. Additional details live in `documentation/diagrams_overview.md`.
+
+## Local development
+
+### Prerequisites
+
+- Python 3.12
+- RTL-SDR dongle (optional for development; required for live RF capture)
+- dump1090 or rtl_tcp instance exposing raw Mode-S frames (defaults configurable)
+
+### Environment setup
 
 ```bash
+cd /path/to/CS7319_Project_WaveTap
+bash dev-env/init_env.sh   # creates .venv and installs requirements
+source .venv/bin/activate
+```
+
+The helper script installs the dependencies defined in `requirements.txt`, including Flask, websockets, pyModeS, pytest, and linting tooling.
+
+### Running the services locally
+
+| Service | Command | Notes |
+| --- | --- | --- |
+| ADS-B publisher | `python -m sdr_cap.adsb_publisher` | Reads from dump1090 (`DUMP1090_HOST`, `DUMP1090_RAW_PORT`) and serves WebSocket JSON on `ADSB_WS_PORT` (default 8443). |
+| ADS-B subscriber | `python -m database_api.adsb_subscriber --uri ws://localhost:8443 --db ./data/adsb_data.db` | Mirrors the publisher stream and persists telemetry via the background `DBWorker`. |
+| WaveTap API | `flask --app database_api.wavetap_api:app run --host 0.0.0.0 --port 5000` | Provides dashboards (`/`) and ADS-B REST endpoints under `/adsb`. Set `ADSB_DB_PATH` if you store the database outside `database_api/`. |
+| All-in-one bootstrap | `python src/main.py` | Spins up the publisher, subscriber, and API together for rapid iteration. |
+
+Key environment variables:
+
+- `DUMP1090_HOST`, `DUMP1090_RAW_PORT` – where to reach your dump1090/rtl_tcp feed
+- `ADSB_WS_PORT` / `ADSB_WS_URI` – WebSocket endpoint published/consumed by the pipeline
+- `ADSB_DB_PATH` – path to the SQLite database (defaults to `database_api/adsb_data.db`)
+- `ADSB_PUBLISH_INTERVAL`, `ADSB_SAVE_INTERVAL` – throttling controls for publisher and subscriber
+
+SQLite files are safe to inspect with any local tool (for example `sqlite3 database_api/adsb_data.db '.tables'`).
+
+### RTL-SDR on WSL (optional)
+
+If you are using WSL, bind the USB dongle with `usbipd` (see `dev-env/attach_rtlsdr_wsl.ps1`) and confirm the device with `rtl_test -t` before launching the publisher.
+
+## Docker-based workflow
+
+The repository includes Dockerfiles for each service and a Compose stack that mirrors the local topology.
+
+```bash
+# build and launch every service
 docker compose up --build
 ```
 
-Environment variables can be supplied via `.env` or the shell to point the ADS-B publisher at your Dump1090 host:
+Services and ports:
 
-```
-DUMP1090_HOST=192.168.50.106
-DUMP1090_RAW_PORT=30002
-ADSB_PUBLISH_INTERVAL=2.5
-```
-
-Persistent ADS-B data is stored in the named volume `adsb-data` and can be inspected on the host under `/var/lib/docker/volumes/adsb-data/_data/adsb_data.db`.
-
-For manual builds the contexts can be built independently, for example:
-
-```bash
-docker build -t wavetap-database-api -f docker/database_api/Dockerfile .
-docker run --rm -p 5000:5000 \
-  -e ADSB_DB_PATH=/data/adsb_data.db \
-  -v $(pwd)/data:/data \
-  wavetap-database-api
-```
-
-See the "Microservice deployment" section later in this document for a deeper dive into configuration, exposed environment variables, and health-check endpoints.
-
-   ## Project Structure
-```
-CS7319_SW_Arch/
-├── src/              # Main source code for reusable modules
-│   ├── sdr_cap/      # SDR IQ capture and streaming modules
-│   │   ├── radio.py      # IQ streaming server
-│   │   ├── iq_client.py  # IQ streaming client library  
-│   │   └── examples.py   # Usage examples and CLI
-│   ├── main.py       # Main application entry point
-│   └── README.md     # Source code documentation
-├── tests/            # Unit and integration tests (pytest)
-├── documentation/    # Documentation, diagrams and project instructions
-│   ├── diagrams/     # Mermaid source (.mmd)
-│   └── diagrams_output/ # Generated PNGs
-├── tools/            # Utility scripts and tools
-│   └── adsb_rtlsdr_pymodes.py # ADS-B decoding utility
-├── dev-env/          # Development environment configuration
-│   └── init_env.sh   # Environment setup script
-├── Dockerfile        # Container build configuration
-├── pyproject.toml    # Project configuration
-├── README.md         # Project documentation
-└── LICENSE           # Project license (MIT)
-```
-
-## Getting Started
-
-- Use the provided setup script (`dev-env/init_env.sh`) to initialize your Python environment and install dependencies.
-- All code is primarily written in Python, with open source libraries as needed.
-
-## Installation
-
-To set up the Python virtual environment and install required libraries:
-
-### Linux/WSL
-1. Open a terminal and navigate to the project directory.
-2. Run:
-   ```bash
-   bash dev-env/init_env.sh
-   ```
-
-
-### Installed Libraries
-The setup script and requirements.txt will install the following Python libraries in the virtual environment:
-- `pyrtlsdr` (RTL-SDR library for software defined radio)
-- `pyModeS` (ADS-B message decoding)
-- `numpy` (numerical computing)
-- `matplotlib` (data visualization)
-- `flask` (web application framework)
-- `httpx` (HTTP client for external API communication)
-- `pytest` (testing framework)
-- `pytest-cov` (test coverage)
-- `ruff` (linting and code quality)
-- `black` (code formatting)
-- `isort` (import sorting)
-- `mypy` (static type checking)
-- `setuptools` (package development and distribution tools)
-
-## RTL-SDR Setup
-
-This project includes Software Defined Radio (SDR) functionality using RTL-SDR dongles. The setup script automatically installs the required system libraries.
-
-### WSL2 USB Device Setup
-If you're using WSL2 on Windows, you'll need to share your RTL-SDR USB device:
-
-1. **Install usbipd-win on Windows** (PowerShell as Administrator):
-   ```powershell
-   winget install usbipd
-   ```
-
-2. **Find your RTL-SDR device**:
-   ```powershell
-   usbipd list
-   ```
-
-3. **Share and attach the device** (replace X-X with your device's bus ID):
-   ```powershell
-   usbipd bind --busid X-X
-   usbipd attach --wsl --busid X-X
-   ```
-
-4. **Verify in WSL**:
-   ```bash
-   lsusb | grep -i rtl
-   rtl_test -t
-   ```
-
-## Usage
-
-### Running the SDR Application
-To run the main SDR application:
-```bash
-source .venv/bin/activate
-python src/main.py
-```
-
-## Microservice deployment details
-
-| Component | Purpose | Default command | Key environment variables |
+| Service | Image context | Exposed port | Purpose |
 | --- | --- | --- | --- |
-| `adsb-publisher` | Streams ADS-B messages from Dump1090 and republishes them over WebSocket. | `python -m sdr_cap.adsb_publisher` | `DUMP1090_HOST`, `DUMP1090_RAW_PORT`, `ADSB_WS_PORT`, `ADSB_PUBLISH_INTERVAL`, `RECEIVER_LAT`, `RECEIVER_LON` |
-| `adsb-subscriber` | Consumes the publisher stream and persists telemetry into SQLite. | `python -m adsb_subscriber --uri ws://adsb-publisher:8443 --db /data/adsb_data.db` | `ADSB_WS_URI`, `ADSB_DB_PATH`, `ADSB_SAVE_INTERVAL` |
-| `database-api` | Flask UI and REST endpoints for browsing stored aircraft data. | `gunicorn wavetap_api:app` | `ADSB_DB_PATH`, `WAVETAP_API_PORT` (via Compose) |
-| `arbiter` | Flask control plane for orchestrating SDR modules. | `gunicorn arbiter.service:app` | none (module registration happens over HTTP) |
+| `adsb-publisher` | `docker/sdr_cap/Dockerfile` | 8443 | WebSocket stream of aircraft telemetry |
+| `adsb-subscriber` | `docker/database_api/Dockerfile` | — | Persists JSON updates into `/data/adsb_data.db` |
+| `database-api` | `docker/database_api/Dockerfile` | 5000 | Flask dashboards and REST endpoints |
+| `arbiter` | `docker/arbiter/Dockerfile` | 8000 | Module registration API (future control plane) |
 
-### Ports and networking
+The subscriber and API share the named volume `adsb-data` so both containers can read/write the same SQLite file.
 
-| Service | External port | Protocol |
-| --- | --- | --- |
-| `adsb-publisher` | 8443 | WebSocket stream of aircraft JSON |
-| `database-api` | 5000 | HTTP dashboard and REST APIs |
-| `arbiter` | 8000 | HTTP control plane |
-
-The subscriber container shares the `adsb-data` named volume with the API so both have access to the same SQLite database. Adjust Compose bindings or replace the volume with a bind-mount if you need to persist data outside Docker.
-
-### Health checks
-
-- Database API: `GET http://localhost:5000/adsb/api/aircraft?window=300`
-- ADS-B publisher: connects clients to `ws://localhost:8443` (receives JSON messages)
-- Arbiter: `GET http://localhost:8000/health`
-
-### SDR Module
-The RTL-SDR functionality is located in `src/sdr/radio.py`. This module provides basic RTL-SDR configuration and testing capabilities.
-
-### Diagrams
-System architecture sources are located in `documentation/diagrams/` and generated images are stored in `documentation/diagrams_output/`.
-The repository includes a small helper script to render PNGs from the Mermaid sources:
+To build an individual image, point `docker build` at the desired Dockerfile. For example, the API image can be built with:
 
 ```bash
-bash documentation/generate_diagrams.sh
+docker build -t wavetap-api -f docker/database_api/Dockerfile .
 ```
-
-This script uses `mmdc` (mermaid-cli / puppeteer). If you see errors about missing Chrome/Chromium, install a system browser or set `PUPPETEER_EXECUTABLE_PATH` to the browser executable before running the script.
-
-_Additional usage examples and instructions will be added as the project develops._
-
-## Contributing
-
-_Outline guidelines for contributing to this project (coding standards, pull requests, etc.)._
 
 ## Testing
 
-All tests should be placed in the `tests/` folder and written using `pytest`.
-To run tests:
+Activate the virtual environment and run the pytest suite:
+
 ```bash
 pytest
 ```
-_Explain how to run tests and ensure code quality (e.g., using pytest, ruff, mypy)._ 
 
-## References
+Tests cover:
 
-_List any references, resources, or documentation relevant to the project._
+- Flask Arbiter endpoints (`tests/test_arbiter`)
+- Database API helpers and persistence glue (`tests/test_database`)
+- SDR publisher behaviour (`tests/test_sdr_cap`)
+- GUI scaffolding smoke tests (`tests/test_gui`)
 
-## Linux/WSL Setup Guide
+## Documentation & diagrams
 
-This project is intended to be run exclusively on Linux or Windows Subsystem for Linux (WSL):
+- `documentation/diagrams/` holds all Mermaid sources (`*.mmd`).
+- Regenerate PNGs with `bash documentation/generate_diagrams.sh`. The script auto-detects Puppeteer’s Chromium binary; install one with `npx puppeteer browsers install chrome` if needed.
+- `documentation/diagrams_overview.md` describes each view and links to the latest renders in `documentation/diagrams/img_output/`.
 
-### 1. Install WSL (if on Windows)
-- Open PowerShell as Administrator and run:
-  ```powershell
-  wsl --install
-  ```
-- Restart your computer if prompted.
-- Choose and set up your preferred Linux distribution (e.g., Ubuntu) from the Microsoft Store.
+## License & acknowledgements
 
-### 2. Install the VS Code WSL Extension
-- Open VS Code.
-- Go to Extensions (`Ctrl+Shift+X`).
-- Search for "Remote - WSL" and install the extension by Microsoft.
-
-### 3. Open Your Project in WSL
-- Open the Command Palette (`Ctrl+Shift+P`).
-- Type and select: `Remote-WSL: Open Folder in WSL`.
-- Choose your project folder (`CS7319_SW_Arch`).
-
-### 4. Set Up Your Python Environment in WSL
-- Open a terminal in VS Code (it will use WSL).
-- Run:
-  ```bash
-  bash dev-env/init_env.sh
-  ```
-- This will create the virtual environment and install dependencies in WSL.
-
-### 5. Update VS Code Settings (Optional)
-- For Linux/WSL compatibility, set the Python interpreter path in `.vscode/settings.json`:
-  ```json
-  {
-    "python.defaultInterpreterPath": ".venv/bin/python"
-  }
-  ```
-
-You can now develop and run your project in a Linux environment using WSL, with all VS Code features.
-
-## Docker Containerization
-
-The repository ships first-class Docker support for each microservice—refer to the "Microservice deployment details" section above or the `docker-compose.yml` file for an opinionated development stack. Customize the build contexts under `docker/` if you need to extend the base images (for example to add hardware drivers or corporate certificate bundles).
-
-### Quick Docker Start (single image)
-
-```bash
-# Build the WaveTap API image only
-docker build -t wavetap-api -f docker/database_api/Dockerfile .
-
-# Run and expose the dashboard on http://localhost:5000
-docker run --rm -p 5000:5000 \
-   -e ADSB_DB_PATH=/data/adsb_data.db \
-   -v $(pwd)/data:/data \
-   wavetap-api
-```
+WaveTap is released under the MIT License (see `LICENSE`). Documentation and tooling were assisted with GitHub Copilot; all human-authored code and decisions are tracked in this repository.
 
 ---
 
-### Disclaimer
-
-AI assistance (GitHub Copilot) was used to help with documentation and environment setup for this project. Project code is to be primarily human-authored. Any use of AI assistants for code generation or other tasks will be clearly disclosed in relevant files or documentation sections.
-
-## License
-
-This project is licensed under the MIT License. See the `LICENSE` file for details.
-
----
+For open issues, roadmap items, and future enhancements (VHF/FM modules, richer analytics), check `TODO.md`.
