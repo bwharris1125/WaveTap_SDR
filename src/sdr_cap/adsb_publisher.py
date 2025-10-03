@@ -261,7 +261,7 @@ def _env_int(name: str, default: int) -> int:
 
 def _load_config_from_env() -> dict[str, float | int | str | None]:
     return {
-        "host": os.getenv("DUMP1090_HOST", "127.0.0.1"),
+        "host": os.getenv("DUMP1090_HOST", "192.168.50.106"), # TODO: change to dynamic
         "src_port": _env_int("DUMP1090_RAW_PORT", 30002),
         "dest_ip": os.getenv("ADSB_WS_HOST", "0.0.0.0"),
         "dest_port": _env_int("ADSB_WS_PORT", 8443),
