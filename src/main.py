@@ -1,6 +1,8 @@
 """WaveTap orchestration bootstrap.
 
-This module emulates the eventual microservice deployment of the WaveTap
+ONLY USE WHEN TESTING LOCALLY FOR EASE OF DEVELOPMENT
+
+This OPTIONAL module emulates the eventual microservice deployment of the WaveTap
 platform by spinning up each component in its own thread:
 
 * ADS-B publisher (SDR capture): streams decoded dump1090 traffic over WebSocket

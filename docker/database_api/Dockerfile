@@ -33,5 +33,4 @@ VOLUME ["/data"]
 EXPOSE 5000
 
 # Default command spins up Gunicorn; override in docker-compose for subscriber worker
-ENTRYPOINT ["gunicorn"]
-CMD ["--bind", "0.0.0.0:5000", "wavetap_api:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "wavetap_api:app"]
