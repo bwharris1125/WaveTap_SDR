@@ -41,12 +41,11 @@ WaveTap is a modular software-defined radio (SDR) toolkit built for the SMU CS73
 ```
 
 ## Architecture at a glance
+C4 diagrams were created to assist in the planning, design, and architecture of the system.  
+[See `diagrams_overview.md` for details and links to all architecture diagrams.](documentation/diagrams_overview.md)
 
-- **System & container views** – see `documentation/diagrams/img_output/01_c4_system_context.png` and `02_c4_container.png` for the high-level topology.
-- **Components & classes** – `03_c4_components.png` and `class_domain.png` drill into the Python modules and relationships actually implemented.
-- **Runtime flow** – `flow_data.png` documents the real data path from the RTL-SDR through dump1090, the publisher/subscriber pipeline, SQLite, and the Flask UI.
+The diagrams are regenerated from the Mermaid sources using `bash documentation/generate_diagrams.sh`.
 
-The diagrams are regenerated from the Mermaid sources using `bash documentation/generate_diagrams.sh`. Additional details live in `documentation/diagrams_overview.md`.
 
 ## Local development
 
@@ -71,7 +70,7 @@ The helper script installs the dependencies defined in `requirements.txt`, inclu
 | Service | Command | Notes |
 | --- | --- | --- |
 | ADS-B publisher | `python -m sdr_cap.adsb_publisher` | Reads from dump1090 (`DUMP1090_HOST`, `DUMP1090_RAW_PORT`) and serves WebSocket JSON on `ADSB_WS_PORT` (default 8443). |
-| ADS-B subscriber | `python -m database_api.adsb_subscriber --uri ws://localhost:8443 --db ./data/adsb_data.db` | Mirrors the publisher stream and persists telemetry via the background `DBWorker`. |
+| ADS-B subscriber | `python -m database_api.adsb_subscriber --uri ws://localhost:8443 --db database_api/adsb_data.db` | Mirrors the publisher stream and persists telemetry via the background `DBWorker`. |
 | WaveTap API | `flask --app database_api.wavetap_api:app run --host 0.0.0.0 --port 5000` | Provides dashboards (`/`) and ADS-B REST endpoints under `/adsb`. Set `ADSB_DB_PATH` if you store the database outside `database_api/`. |
 | All-in-one bootstrap | `python src/main.py` | Spins up the publisher, subscriber, and API together for rapid iteration. |
 
