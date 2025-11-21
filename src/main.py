@@ -24,6 +24,7 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable, Optional
@@ -37,11 +38,11 @@ for directory in (DATABASE_API_DIR, SDR_CAP_DIR):
     if directory.exists() and path_str not in sys.path:
         sys.path.append(path_str)
 
+from werkzeug.serving import make_server  # noqa: E402
+
 from database_api.adsb_subscriber import ADSBSubscriber  # noqa: E402
 from database_api.wavetap_api import app as flask_app  # noqa: E402
 from sdr_cap.adsb_publisher import ADSBPublisher  # noqa: E402
-from werkzeug.serving import make_server  # noqa: E402
-
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(threadName)s - %(message)s"
 LOGGER = logging.getLogger(__name__)
@@ -329,6 +330,8 @@ class WaveTapRuntime:
         self.config = config
         self.stop_event = threading.Event()
         self.services: list[ServiceHandle] = []
+        self.publisher = None
+        self.subscriber = None
 
     def start_all(self) -> None:
         """Spin up each managed service in its own daemon thread."""
@@ -381,6 +384,7 @@ class WaveTapRuntime:
             if handle.thread.is_alive():
                 handle.thread.join(timeout=5)
         LOGGER.info("All services stopped.")
+        self._export_metrics_on_shutdown()
 
     def describe_services(self) -> str:
         """Return a multi-line human-readable service overview."""
@@ -393,6 +397,38 @@ class WaveTapRuntime:
         for handle in iterable:
             lines.append(f" - {handle.name}: {handle.description}")
         return "\n".join(lines)
+
+    def _export_metrics_on_shutdown(self) -> None:
+        """
+        Export collected metrics to JSON files upon shutdown.
+
+        Attempts to export TCP metrics from the global collector to timestamped
+        JSON files in the current directory or a specified output directory.
+        """
+        try:
+            from utilities.metrics import get_tcp_collector
+
+            collector = get_tcp_collector()
+            if not collector or not collector.get_history():
+                LOGGER.debug("No metrics to export")
+                return
+
+            # Create metrics directory if it doesn't exist
+            metrics_dir = Path.cwd() / "metrics"
+            metrics_dir.mkdir(exist_ok=True)
+
+            # Generate timestamped filename
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            metrics_file = metrics_dir / f"tcp_metrics_{timestamp}.json"
+
+            # Export metrics
+            collector.export_to_json(str(metrics_file))
+            LOGGER.info("Metrics exported to %s", metrics_file)
+
+        except ImportError:
+            LOGGER.debug("Metrics module not available for export")
+        except Exception as e:
+            LOGGER.warning("Failed to export metrics: %s", e)
 
 
 def configure_logging() -> None:

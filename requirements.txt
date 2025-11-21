@@ -11,6 +11,9 @@ httpx>=0.24.0
 websockets>=11.0.0
 gunicorn>=21.2.0
 
+# System monitoring
+psutil>=5.9.0
+
 # Development and testing
 pytest>=6.0.0
 pytest-cov>=2.12.0

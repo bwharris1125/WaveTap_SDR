@@ -1,0 +1,97 @@
+stages:
+  - lint
+  - test
+  - coverage
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+lint:
+  stage: lint
+  image: python:3.11
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - ruff check .
+  only:
+    - main
+    - master
+    - metric_generation
+
+test:
+  stage: test
+  image: python:3.11
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pytest --cov=src --cov-report=xml --cov-report=term --cov-fail-under=70
+  artifacts:
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+  only:
+    - main
+    - master
+    - metric_generation
+
+coverage_upload:
+  stage: coverage
+  image: python:3.11
+  needs:
+    - job: test
+      artifacts: true
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt || true
+  script:
+    # Upload coverage to Codecov using the official uploader script.
+    - echo "Uploading coverage.xml to Codecov (if configured)"
+    - 'curl -s https://codecov.io/bash > /tmp/codecov.sh || true'
+    - 'bash /tmp/codecov.sh -f coverage.xml || true'
+
+    # Optionally push a metrics file to a dedicated branch. Provide a write token
+    # in CI as `REPO_WRITE_TOKEN` (Personal Access Token with write repository permission
+    # or deploy token). If unset, this step is skipped.
+    - |
+      if [ -n "${REPO_WRITE_TOKEN}" ]; then
+        echo "Pushing metrics to pipeline-metrics branch"
+        git config --global user.email "gitlab-ci@example.com"
+        git config --global user.name "GitLab CI"
+        # Clone using token so we can push
+        repo_url="https://oauth2:${REPO_WRITE_TOKEN}@gitlab.com/${CI_PROJECT_PATH}.git"
+        git clone --depth 1 "$repo_url" repo-metrics
+        cd repo-metrics || exit 0
+        # create or switch to the pipeline-metrics branch
+        git checkout -B pipeline-metrics || git checkout --orphan pipeline-metrics
+        mkdir -p metrics
+        # create a minimal metrics JSON using available CI variables
+        python - <<'PY'
+import json, os, datetime
+data = {
+  'commit': os.getenv('CI_COMMIT_SHA'),
+  'ref': os.getenv('CI_COMMIT_REF_NAME'),
+  'coverage_percent': None,
+  'run_id': os.getenv('CI_PIPELINE_ID'),
+  'timestamp': datetime.datetime.utcnow().isoformat()+'Z'
+}
+with open(f"metrics/{os.getenv('CI_PIPELINE_ID')}.json", 'w') as f:
+    json.dump(data, f)
+PY
+        # optionally include the coverage.xml produced by the test job
+        mv ../coverage.xml metrics/${CI_PIPELINE_ID}.xml || true
+        git add metrics/${CI_PIPELINE_ID}.json metrics/${CI_PIPELINE_ID}.xml || true
+        git commit -m "Add pipeline metrics for ${CI_COMMIT_SHA}" || true
+        git push "$repo_url" pipeline-metrics --force || true
+      else
+        echo "REPO_WRITE_TOKEN not set; skipping metrics push"
+      fi
+
+  artifacts:
+    when: always
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+  only:
+    - main
+    - master
+    - metric_generation

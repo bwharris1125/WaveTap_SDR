@@ -18,7 +18,7 @@ build/
 *.spec
 
 # Virtual environments
-.venv/
+.venv*/
 venv/
 ENV/
 env/
@@ -50,3 +50,8 @@ htmlcov/
 *.db
 *.db-wal
 *.db-shm
+
+# Ignore CI/CD & metrics artifacts
+/.ruff_cache
+/.venv-ci
+/metrics

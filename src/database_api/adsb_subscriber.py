@@ -16,6 +16,15 @@ try:
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from adsb_db import DBWorker
 
+try:
+    from utilities.metrics import (
+        get_system_resource_collector,
+        get_tcp_collector,
+    )
+except ImportError:
+    get_tcp_collector = None
+    get_system_resource_collector = None
+
 
 class ADSBSubscriber:
     """Subscribe to ADS-B updates, mirror them locally, and persist into SQLite."""
@@ -27,6 +36,9 @@ class ADSBSubscriber:
         self.db_worker = None
         self.active_sessions = {}
         self.last_saved_ts = {}
+        self._tcp_collector = get_tcp_collector(logger=logging.getLogger(__name__)) if get_tcp_collector else None
+        self._system_resource_collector = get_system_resource_collector(logger=logging.getLogger(__name__)) if get_system_resource_collector else None
+        self._metric_collection_interval = 30  # Collect metrics every 30 seconds
 
     def setup_db(self, db_path=None):
         """Initialize DBWorker for database operations."""
@@ -49,6 +61,7 @@ class ADSBSubscriber:
         """
         base_delay = max(retry_delay, 0.1)
         delay = base_delay
+        last_metric_collection = 0
         while True:
             connected = False
             try:
@@ -84,6 +97,17 @@ class ADSBSubscriber:
                                 )
                         except Exception as exc:
                             logging.warning("Failed to decode message: %s", exc)
+
+                        # Passively collect TCP and system resource metrics at intervals
+                        if self._tcp_collector or self._system_resource_collector:
+                            current_time = time.time()
+                            if current_time - last_metric_collection >= self._metric_collection_interval:
+                                if self._tcp_collector:
+                                    self._tcp_collector.collect()
+                                if self._system_resource_collector:
+                                    self._system_resource_collector.collect()
+                                last_metric_collection = current_time
+
             except asyncio.CancelledError:
                 raise
             except (OSError, ws_exc.WebSocketException) as exc:
@@ -168,7 +192,71 @@ class ADSBSubscriber:
             ))
             logging.debug("Inserted path for %s at %s", icao, ts_iso)
 
+    def get_tcp_metrics(self):
+        """
+        Get collected TCP metrics (non-blocking).
 
+        Returns:
+            Dictionary with metrics or None if collector unavailable.
+        """
+        if self._tcp_collector is None:
+            return None
+        latest = self._tcp_collector.get_latest()
+        return latest.__dict__ if latest else None
+
+    def export_tcp_metrics(self, file_path: str) -> bool:
+        """
+        Export collected TCP metrics to a JSON file.
+
+        Args:
+            file_path: Path where metrics should be exported.
+
+        Returns:
+            True if export successful, False otherwise.
+        """
+        if self._tcp_collector is None:
+            logging.warning("TCP metrics collector not available")
+            return False
+        try:
+            self._tcp_collector.export_to_json(file_path)
+            return True
+        except Exception as e:
+            logging.error("Failed to export metrics: %s", e)
+            return False
+
+    def _export_metrics_on_shutdown(self) -> None:
+        """
+        Export collected metrics to JSON file upon shutdown.
+
+        Creates a metrics/ directory and exports TCP and system resource metrics with a timestamp.
+        """
+        if ((self._tcp_collector is None or not self._tcp_collector.get_history()) and
+            (self._system_resource_collector is None or not self._system_resource_collector.get_history())):
+            logging.debug("No metrics to export")
+            return
+
+        try:
+            # Create metrics directory if it doesn't exist
+            metrics_dir = Path.cwd() / "metrics"
+            metrics_dir.mkdir(exist_ok=True)
+
+            # Generate timestamped filename
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+
+            # Export TCP metrics if available
+            if self._tcp_collector and self._tcp_collector.get_history():
+                tcp_metrics_file = metrics_dir / f"subscriber_tcp_metrics_{timestamp}.json"
+                self._tcp_collector.export_to_json(str(tcp_metrics_file))
+                logging.info("Subscriber TCP metrics exported to %s", tcp_metrics_file)
+
+            # Export system resource metrics if available
+            if self._system_resource_collector and self._system_resource_collector.get_history():
+                system_metrics_file = metrics_dir / f"subscriber_system_metrics_{timestamp}.json"
+                self._system_resource_collector.export_to_json(str(system_metrics_file))
+                logging.info("Subscriber system resource metrics exported to %s", system_metrics_file)
+
+        except Exception as e:
+            logging.warning("Failed to export subscriber metrics: %s", e)
 def print_aircraft_data(collector, interval: int = 3) -> None:
     last_lines = 0
     while True:
@@ -234,10 +322,19 @@ async def main():
         periodic_db_save()
     )
 
+    return subscriber
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    subscriber_instance = None
     try:
-        asyncio.run(main())
+        subscriber_instance = asyncio.run(main())
     except KeyboardInterrupt:
         print("Subscriber stopped by user.")
+    except Exception:
+        pass
+    finally:
+        # Export metrics on shutdown
+        if subscriber_instance:
+            subscriber_instance._export_metrics_on_shutdown()

@@ -1,5 +1,8 @@
 # WaveTap SDR Platform
 
+[![CI](https://github.com/bwharris1125/CS7319_SW_Arch/actions/workflows/ci.yml/badge.svg)](https://github.com/bwharris1125/CS7319_SW_Arch/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/bwharris1125/CS7319_SW_Arch/branch/main/graph/badge.svg)](https://codecov.io/gh/bwharris1125/CS7319_SW_Arch)
+
 <p align="center">
   <img src="documentation/wavetap_icon.png" alt="WaveTap Logo" width="200" />
   <div align="center"><strong><em>SDR Capture, Utilities, and Visualization</em></strong></div>
@@ -12,6 +15,7 @@ WaveTap is a modular software-defined radio (SDR) toolkit built for the SMU CS73
 - **End-to-end ADS-B pipeline** – `sdr_cap` ingests dump1090 frames, `database_api` persists telemetry, and the WaveTap UI exposes dashboards and REST endpoints.
 - **Production-style topology** – the same Python code can run locally or inside Docker containers using the provided Compose file.
 - **Extensible control plane** – an Arbiter service is scaffolded to manage future SDR modules and activation policies.
+- **Passive metrics collection** – comprehensive network, application, and system resource monitoring that automatically exports to JSON without impacting existing functionality; ideal for performance comparison across platforms (Windows, Linux, Raspberry Pi).
 - **Documented architecture** – Mermaid-based C4, class, and data-flow diagrams live alongside the code and are regenerable with a single script.
 
 ## Repository layout
@@ -29,7 +33,7 @@ WaveTap is a modular software-defined radio (SDR) toolkit built for the SMU CS73
 │   ├── database_api/          # Flask UI, ADS-B blueprint, subscriber, DB worker
 │   ├── gui/                   # Desktop dashboard prototypes and mapping tools
 │   ├── sdr_cap/               # ADS-B publisher and capture helpers
-│   ├── utilities/             # Shared logging and spectrum analysis utilities
+│   ├── utilities/             # Shared logging, spectrum analysis, and metrics collection utilities
 │   └── main.py                # Local bootstrap that spins up the stack
 ├── tests/                     # Pytest suites covering publisher, subscriber, arbiter, and GUI glue
 ├── tools/                     # One-off utilities (e.g., ADS-B helpers)
@@ -80,8 +84,46 @@ Key environment variables:
 - `ADSB_WS_PORT` / `ADSB_WS_URI` – WebSocket endpoint published/consumed by the pipeline
 - `ADSB_DB_PATH` – path to the SQLite database (defaults to `database_api/adsb_data.db`)
 - `ADSB_PUBLISH_INTERVAL`, `ADSB_SAVE_INTERVAL` – throttling controls for publisher and subscriber
+- `ADSB_PUBLISHER_LOG_LEVEL` – log level for the publisher (default: DEBUG)
 
 SQLite files are safe to inspect with any local tool (for example `sqlite3 database_api/adsb_data.db '.tables'`).
+
+### Metrics collection
+
+The platform passively collects performance and system resource metrics without affecting existing functionality. Metrics are automatically exported to JSON files in the `metrics/` directory upon service shutdown.
+
+**Collected metrics:**
+
+- **TCP Network Statistics** – dropped packets, retransmitted packets, out-of-order packets (from `/proc/net/tcp` and `/proc/net/netstat`)
+- **ADS-B Message Assembly Timing** – time from first message reception (by ICAO) to complete field population, with per-aircraft tracking and aggregate statistics (min/max/mean/median)
+- **Incomplete Messages** – count of ADS-B messages that fail to complete within a configurable 2-minute timeout threshold (editable via `MESSAGE_ASSEMBLY_TIMEOUT_SECONDS` constant)
+- **System Resources** – CPU usage percentage, memory usage (percentage, used MB, available MB), and OS information (name and version)
+
+**Metrics exports:**
+
+Each service (publisher and subscriber) exports timestamped JSON files on shutdown:
+
+- `publisher_tcp_metrics_YYYYMMDD_HHMMSS.json` – TCP network statistics
+- `publisher_assembly_metrics_YYYYMMDD_HHMMSS.json` – ADS-B message assembly times
+- `publisher_incomplete_metrics_YYYYMMDD_HHMMSS.json` – count of incomplete messages and timeout threshold
+- `publisher_system_metrics_YYYYMMDD_HHMMSS.json` – CPU and memory usage with OS context
+- `subscriber_tcp_metrics_YYYYMMDD_HHMMSS.json` – TCP network statistics
+- `subscriber_system_metrics_YYYYMMDD_HHMMSS.json` – CPU and memory usage with OS context
+
+**Use cases:**
+
+- **Platform comparison** – evaluate application performance on Windows vs. Raspberry Pi by comparing CPU/memory statistics
+- **Network analysis** – identify TCP packet loss and retransmission patterns
+- **Message assembly diagnostics** – analyze how long it takes aircraft to populate all required fields
+- **Performance optimization** – identify resource bottlenecks and system-level issues
+
+**Configuration:**
+
+To adjust the ADS-B message assembly timeout threshold, edit the constant in `src/sdr_cap/adsb_publisher.py`:
+
+```python
+MESSAGE_ASSEMBLY_TIMEOUT_SECONDS = 120  # in seconds (default: 2 minutes)
+```
 
 ### RTL-SDR on WSL (optional)
 
