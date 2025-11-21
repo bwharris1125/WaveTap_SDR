@@ -1,0 +1,24 @@
+gantt
+    title WaveTap Testing & Analytics Timeline
+    dateFormat  YYYY-MM-DD
+    axisFormat  %m/%d
+    tickInterval 1week
+    section Proposal
+    Proposal Document          :propDoc, 2025-10-15, 8d
+    section Literature Research
+    Literature Research        :research, after prop, 5d
+    Research Report            :report, after research, 9d
+    Create Unit Tests          :test_start, after report, 7d
+    section Application
+    Create CI/CD Pipelines     :pipelines, 2025-11-9, 4d
+    Add Instrumnentation       :instrumentation, after pipelines, 4d
+    Collect Metrics            :metrics, after pipelines, 12d
+    Progress Report            :progressDoc, 2025-11-18, 4d
+    section Final Report
+    Final Report               :finalReport, 2025-11-24, 8d
+    Final Presentation         :finalPres, 2025-12-2, 2d
+    section milestones
+    Proposal Due               :milestone, prop, 2025-10-24, 0d
+    Research Report Due        :milestone, reportDue, 2025-11-07, 0d
+    Progress Report Due        :milestone, progressDue, 2025-11-21, 0d
+    Final Presentation Due     :milestone, pres, 2025-12-5, 0d
