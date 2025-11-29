@@ -54,4 +54,4 @@ htmlcov/
 # Ignore CI/CD & metrics artifacts
 /.ruff_cache
 /.venv-ci
-/metrics
+/tmp

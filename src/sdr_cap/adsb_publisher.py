@@ -332,5 +332,10 @@ async def main():
 
 if __name__ == "__main__":
     log_level = os.getenv("ADSB_PUBLISHER_LOG_LEVEL", "DEBUG").upper()
-    logging.basicConfig(level=getattr(logging, log_level, logging.DEBUG))
+    log_dir = os.getenv("ADSB_LOG_DIR", "tmp/logs")
+
+    # Import logging config after os is available
+    from wavetap_utils.logging_config import setup_component_logging
+    setup_component_logging("publisher", log_level=log_level, log_dir=log_dir)
+
     asyncio.run(main())

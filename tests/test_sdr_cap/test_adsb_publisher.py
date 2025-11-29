@@ -66,6 +66,8 @@ def test_adsb_client_handle_messages(monkeypatch):
     client.aircraft_data = {}
     client._cpr_states = {}
     client._position_failures = {}
+    client._assembly_times = {}
+    client._stale_cpr_counts = {}
     client.receiver_lat = 33.0
     client.receiver_lon = -97.0
 

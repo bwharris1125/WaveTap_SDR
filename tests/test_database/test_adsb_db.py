@@ -34,7 +34,7 @@ def test_dbworker_processes_tasks(tmp_path):
         icao = "ABC123"
         callsign = "TEST123"
         ts = time.time()
-        worker.enqueue(("upsert_aircraft", icao, callsign, ts, ts))
+        worker.enqueue(("upsert_aircraft", icao, callsign, ts, ts, None, 0))
 
         # create a session and add a path point
         session_id = str(uuid.uuid4())
@@ -103,7 +103,7 @@ def test_dbworker_handle_branches(monkeypatch):
     worker._init_schema()
     cur = worker.conn.cursor()
 
-    worker._handle(("upsert_aircraft", "ICAO1", "CALL", 1.0, 2.0), cur)
+    worker._handle(("upsert_aircraft", "ICAO1", "CALL", 1.0, 2.0, None, 0), cur)
     worker.conn.commit()
 
     worker._handle(("start_session", "sess", "ICAO1", 3.0), cur)

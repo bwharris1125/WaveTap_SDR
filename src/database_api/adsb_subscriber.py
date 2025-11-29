@@ -235,7 +235,13 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    log_dir = os.environ.get("ADSB_LOG_DIR", "tmp/logs")
+    log_level = os.environ.get("ADSB_SUBSCRIBER_LOG_LEVEL", "DEBUG")
+
+    # Import logging config after os is available
+    from wavetap_utils.logging_config import setup_component_logging
+    setup_component_logging("subscriber", log_level=log_level, log_dir=log_dir)
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
