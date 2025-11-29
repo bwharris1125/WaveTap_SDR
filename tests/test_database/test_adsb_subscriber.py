@@ -219,6 +219,13 @@ def test_adsb_subscriber_main(monkeypatch):
     class DummySubscriber:
         def __init__(self, uri):
             events["uri"] = uri
+            # Add mock metrics collector
+            self.metrics_collector = type('MockCollector', (), {
+                'start_csv_logging': lambda self: None,
+                'start_periodic_logging': lambda self, interval_seconds=10.0: None,
+                'stop_periodic_logging': lambda self: None,
+                'stop_csv_logging': lambda self: None,
+            })()
 
         def setup_db(self, db_path):
             events["db_path"] = db_path
