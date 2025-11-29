@@ -160,10 +160,10 @@ class DroppedTCPPacketsCollector:
     def start_csv_logging(self, file_path: Optional[str] = None) -> str:
         """
         Start logging metrics to a CSV file.
-        
+
         Args:
             file_path: Path to the CSV file. If None, uses default in metrics/ directory.
-            
+
         Returns:
             Path to the CSV file being used.
         """
@@ -172,9 +172,9 @@ class DroppedTCPPacketsCollector:
             metrics_dir.mkdir(exist_ok=True)
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             file_path = str(metrics_dir / f"publisher_tcp_metrics_{timestamp}.csv")
-        
+
         self._csv_file = Path(file_path)
-        
+
         # Open file and create writer
         file_exists = self._csv_file.exists()
         try:
@@ -191,19 +191,19 @@ class DroppedTCPPacketsCollector:
             self.logger.error("Failed to start CSV logging: %s", e)
             self._csv_writer = None
             self._csv_handle = None
-        
+
         return file_path
 
     def write_csv_snapshot(self, snapshot: TCPMetricSnapshot) -> None:
         """
         Write a metric snapshot to the CSV file immediately.
-        
+
         Args:
             snapshot: The TCPMetricSnapshot to write.
         """
         if self._csv_writer is None or self._csv_handle is None:
             return
-        
+
         try:
             self._csv_writer.writerow(asdict(snapshot))
             # Flush after each write to ensure data is written even on unexpected shutdown

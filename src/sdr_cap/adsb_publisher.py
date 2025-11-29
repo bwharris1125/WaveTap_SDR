@@ -491,9 +491,9 @@ async def main():
 if __name__ == "__main__":
     log_level = os.getenv("ADSB_PUBLISHER_LOG_LEVEL", "DEBUG").upper()
     logging.basicConfig(level=getattr(logging, log_level, logging.DEBUG))
-    
+
     publisher_instance = None
-    
+
     def signal_handler(signum, frame):
         """Handle termination signals gracefully."""
         logging.info("Received signal %d, shutting down...", signum)
@@ -503,11 +503,11 @@ if __name__ == "__main__":
             except Exception as e:
                 logging.error("Error exporting metrics: %s", e)
         raise KeyboardInterrupt()
-    
+
     # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     try:
         publisher_instance = asyncio.run(main())
     except Exception as e:
