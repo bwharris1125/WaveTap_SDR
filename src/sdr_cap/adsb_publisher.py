@@ -21,6 +21,8 @@ class ADSBClient(TcpClient):
         self.aircraft_data = {}
         self._cpr_states: dict[str, dict[str, tuple[str, float] | None]] = {}
         self._position_failures: dict[str, float] = {}
+        self._assembly_times: dict[str, float] = {}  # Track assembly completion time per aircraft
+        self._stale_cpr_counts: dict[str, int] = {}  # Track stale CPR pair count per aircraft
         self.receiver_lat = receiver_lat
         self.receiver_lon = receiver_lon
         logging.info(f"Starting ADSBClient on {host}:{port}[{data_type}]")
@@ -50,6 +52,8 @@ class ADSBClient(TcpClient):
         msg_even, ts_even = even
         msg_odd, ts_odd = odd
         if abs(ts_even - ts_odd) > 10:
+            # Increment stale CPR pair count
+            self._stale_cpr_counts[icao] = self._stale_cpr_counts.get(icao, 0) + 1
             last_log = self._position_failures.get(icao, 0.0)
             if timestamp - last_log > 30:
                 logging.debug("Ignoring stale CPR pair for %s (delta %.1fs)", icao, abs(ts_even - ts_odd))
@@ -106,6 +110,38 @@ class ADSBClient(TcpClient):
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return radius_nm * c
 
+    def _update_assembly_time(self, icao: str, entry: dict, timestamp: float) -> None:
+        """
+        Check if all required fields are populated and calculate assembly time.
+        Updates entry with assembly_time_ms if not previously recorded.
+
+        Required fields for a complete message: callsign, lat, long, alt, vel
+        """
+        # Skip if we've already recorded assembly time for this aircraft
+        if icao in self._assembly_times:
+            return
+
+        # Check if all required fields are complete
+        callsign = entry.get("callsign")
+        position = entry.get("position")
+        altitude = entry.get("altitude")
+        velocity = entry.get("velocity")
+        first_seen = entry.get("first_seen")
+
+        # Verify all required fields are populated
+        has_callsign = callsign is not None
+        has_position = position is not None and position.get("lat") is not None and position.get("lon") is not None
+        has_altitude = altitude is not None
+        has_velocity = velocity is not None
+
+        if has_callsign and has_position and has_altitude and has_velocity and first_seen is not None:
+            # Calculate assembly time in milliseconds
+            assembly_time_ms = (timestamp - first_seen) * 1000
+            self._assembly_times[icao] = assembly_time_ms
+            entry["assembly_time_ms"] = assembly_time_ms
+            logging.debug(f"Aircraft {icao} reached full completion in {assembly_time_ms:.2f}ms")
+
+
     def handle_messages(self, messages: list[tuple[str, float]]) -> None:
         """
         Parse a batch of ADS-B messages and update aircraft_data with decoded
@@ -134,6 +170,8 @@ class ADSBClient(TcpClient):
                         "distance_nm": None,
                         "distance_km": None,
                         "first_seen": timestamp,
+                        "assembly_time_ms": None,
+                        "stale_cpr_count": 0,
                     }
                 entry = self.aircraft_data[icao]
                 first_seen = entry.get("first_seen")
@@ -158,8 +196,10 @@ class ADSBClient(TcpClient):
                             "vertical_rate": velocity[2],
                             "type": velocity[3],
                         }
-                # NOTE: Other typecodes can be added as needed
-                # logging.debug(f"Updated aircraft {icao}") # extremely verbose
+                # Check if message assembly is complete and calculate time
+                self._update_assembly_time(icao, entry, timestamp)
+                # Update stale CPR count
+                entry["stale_cpr_count"] = self._stale_cpr_counts.get(icao, 0)
 
 
 class ADSBPublisher:

@@ -116,6 +116,8 @@ class ADSBSubscriber:
                 entry.get("callsign"),
                 entry.get("first_seen"),
                 last_update,
+                entry.get("assembly_time_ms"),
+                entry.get("stale_cpr_count"),
             ))
             if last_update is None:
                 continue
