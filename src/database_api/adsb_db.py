@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-
 _EXPECTED_PATH_COLUMNS = {
     "velocity": "REAL",
     "track": "REAL",

@@ -66,11 +66,6 @@ def test_adsb_client_handle_messages(monkeypatch):
     client.aircraft_data = {}
     client._cpr_states = {}
     client._position_failures = {}
-    client._first_message_time = {}
-    client._completed_icaos = set()
-    client._timed_out_icaos = set()
-    client._incomplete_count = 0
-    client._assembly_collector = SimpleNamespace(record_assembly_complete=lambda **kwargs: None)
     client.receiver_lat = 33.0
     client.receiver_lon = -97.0
 
@@ -142,9 +137,6 @@ def test_publish_data_without_clients(monkeypatch):
     publisher.clients = set()
     publisher.interval = 0
     publisher.src_client = SimpleNamespace(aircraft_data={})
-    publisher._metric_collection_interval = 30
-    publisher._tcp_collector = SimpleNamespace(collect=lambda: None)
-    publisher._system_resource_collector = SimpleNamespace(collect=lambda: None)
 
     async def fake_sleep(_):
         raise asyncio.CancelledError
@@ -184,82 +176,3 @@ def test_adsb_publisher_close_cleans_up():
     ws = next(iter(publisher.clients))
     assert ws.closed
     assert publisher._client_thread.join_called
-
-
-def test_adsb_client_incomplete_message_tracking():
-    """Test that incomplete messages are tracked after timeout."""
-    client = adsb_publisher.ADSBClient.__new__(adsb_publisher.ADSBClient)
-    client.aircraft_data = {}
-    client._cpr_states = {}
-    client._position_failures = {}
-    client._first_message_time = {}
-    client._completed_icaos = set()
-    client._timed_out_icaos = set()
-    client._incomplete_count = 0
-    client.MESSAGE_ASSEMBLY_TIMEOUT_SECONDS = 2  # Set short timeout for testing
-    client._assembly_collector = None  # Disable assembly collector for this test
-    client.receiver_lat = 33.0
-    client.receiver_lon = -97.0
-
-    # Create an aircraft entry with only partial data
-    client.aircraft_data["ABC123"] = {
-        "icao": "ABC123",
-        "callsign": "TEST123",
-        "position": {"lat": 33.0, "lon": -97.0},
-        "altitude": 10000,
-        "velocity": None,  # Missing velocity field
-        "first_seen": 1000.0,
-    }
-    client._first_message_time["ABC123"] = 1000.0
-
-    # Call check method with timestamp that exceeds timeout
-    client._check_and_record_assembly_complete(
-        "ABC123",
-        client.aircraft_data["ABC123"],
-        1000.0 + 3.0,  # 3 seconds later, exceeds 2-second timeout
-    )
-
-    # Verify incomplete message was recorded
-    assert client._incomplete_count == 1
-    assert "ABC123" in client._timed_out_icaos
-    assert client.get_incomplete_message_count() == 1
-
-
-def test_adsb_client_incomplete_message_not_double_counted():
-    """Test that incomplete messages are only counted once."""
-    client = adsb_publisher.ADSBClient.__new__(adsb_publisher.ADSBClient)
-    client.aircraft_data = {}
-    client._cpr_states = {}
-    client._position_failures = {}
-    client._first_message_time = {}
-    client._completed_icaos = set()
-    client._timed_out_icaos = set()
-    client._incomplete_count = 0
-    client.MESSAGE_ASSEMBLY_TIMEOUT_SECONDS = 2
-    client._assembly_collector = None
-    client.receiver_lat = 33.0
-    client.receiver_lon = -97.0
-
-    # Create an aircraft entry
-    client.aircraft_data["DEF456"] = {
-        "icao": "DEF456",
-        "callsign": "TEST456",
-        "position": None,  # Missing position
-        "altitude": None,  # Missing altitude
-        "velocity": None,  # Missing velocity
-        "first_seen": 1000.0,
-    }
-    client._first_message_time["DEF456"] = 1000.0
-
-    # Call check method multiple times with timestamps past timeout
-    for i in range(3):
-        client._check_and_record_assembly_complete(
-            "DEF456",
-            client.aircraft_data["DEF456"],
-            1000.0 + 3.0 + i,
-        )
-
-    # Verify incomplete message was only counted once
-    assert client._incomplete_count == 1
-    assert client.get_incomplete_message_count() == 1
-
