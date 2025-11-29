@@ -11,19 +11,11 @@ from pathlib import Path
 import websockets
 from websockets import exceptions as ws_exc
 
-try:
-    from .adsb_db import DBWorker
-except ImportError:  # pragma: no cover - fallback for direct script execution
-    from adsb_db import DBWorker
-
-try:
-    from utilities.metrics import (
-        get_system_resource_collector,
-        get_tcp_collector,
-    )
-except ImportError:
-    get_tcp_collector = None
-    get_system_resource_collector = None
+from database_api.adsb_db import DBWorker
+from wavetap_utils.metrics import (
+    get_system_resource_collector,
+    get_tcp_collector,
+)
 
 
 class ADSBSubscriber:
@@ -36,8 +28,8 @@ class ADSBSubscriber:
         self.db_worker = None
         self.active_sessions = {}
         self.last_saved_ts = {}
-        self._tcp_collector = get_tcp_collector(logger=logging.getLogger(__name__)) if get_tcp_collector else None
-        self._system_resource_collector = get_system_resource_collector(logger=logging.getLogger(__name__)) if get_system_resource_collector else None
+        self._tcp_collector = get_tcp_collector(logger=logging.getLogger(__name__))
+        self._system_resource_collector = get_system_resource_collector(logger=logging.getLogger(__name__))
         self._metric_collection_interval = 30  # Collect metrics every 30 seconds
 
     def setup_db(self, db_path=None):
@@ -99,14 +91,11 @@ class ADSBSubscriber:
                             logging.warning("Failed to decode message: %s", exc)
 
                         # Passively collect TCP and system resource metrics at intervals
-                        if self._tcp_collector or self._system_resource_collector:
-                            current_time = time.time()
-                            if current_time - last_metric_collection >= self._metric_collection_interval:
-                                if self._tcp_collector:
-                                    self._tcp_collector.collect()
-                                if self._system_resource_collector:
-                                    self._system_resource_collector.collect()
-                                last_metric_collection = current_time
+                        current_time = time.time()
+                        if current_time - last_metric_collection >= self._metric_collection_interval:
+                            self._tcp_collector.collect()
+                            self._system_resource_collector.collect()
+                            last_metric_collection = current_time
 
             except asyncio.CancelledError:
                 raise
@@ -197,10 +186,8 @@ class ADSBSubscriber:
         Get collected TCP metrics (non-blocking).
 
         Returns:
-            Dictionary with metrics or None if collector unavailable.
+            Dictionary with metrics or None if no data collected yet.
         """
-        if self._tcp_collector is None:
-            return None
         latest = self._tcp_collector.get_latest()
         return latest.__dict__ if latest else None
 
@@ -214,9 +201,6 @@ class ADSBSubscriber:
         Returns:
             True if export successful, False otherwise.
         """
-        if self._tcp_collector is None:
-            logging.warning("TCP metrics collector not available")
-            return False
         try:
             self._tcp_collector.export_to_json(file_path)
             return True
@@ -230,8 +214,11 @@ class ADSBSubscriber:
 
         Creates a metrics/ directory and exports TCP and system resource metrics with a timestamp.
         """
-        if ((self._tcp_collector is None or not self._tcp_collector.get_history()) and
-            (self._system_resource_collector is None or not self._system_resource_collector.get_history())):
+        # Check if there's any data to export
+        tcp_history = self._tcp_collector.get_history()
+        system_history = self._system_resource_collector.get_history()
+
+        if not tcp_history and not system_history:
             logging.debug("No metrics to export")
             return
 
@@ -244,13 +231,13 @@ class ADSBSubscriber:
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
             # Export TCP metrics if available
-            if self._tcp_collector and self._tcp_collector.get_history():
+            if tcp_history:
                 tcp_metrics_file = metrics_dir / f"subscriber_tcp_metrics_{timestamp}.json"
                 self._tcp_collector.export_to_json(str(tcp_metrics_file))
                 logging.info("Subscriber TCP metrics exported to %s", tcp_metrics_file)
 
             # Export system resource metrics if available
-            if self._system_resource_collector and self._system_resource_collector.get_history():
+            if system_history:
                 system_metrics_file = metrics_dir / f"subscriber_system_metrics_{timestamp}.json"
                 self._system_resource_collector.export_to_json(str(system_metrics_file))
                 logging.info("Subscriber system resource metrics exported to %s", system_metrics_file)
@@ -326,7 +313,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     subscriber_instance = None
     try:
         subscriber_instance = asyncio.run(main())

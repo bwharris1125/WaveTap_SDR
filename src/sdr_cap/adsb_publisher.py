@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import signal
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,16 +12,11 @@ import pyModeS as pms
 import websockets
 from pyModeS.extra.tcpclient import TcpClient
 
-try:
-    from utilities.metrics import (
-        get_assembly_collector,
-        get_system_resource_collector,
-        get_tcp_collector,
-    )
-except ImportError:
-    get_tcp_collector = None
-    get_assembly_collector = None
-    get_system_resource_collector = None
+from wavetap_utils.metrics import (
+    get_assembly_collector,
+    get_system_resource_collector,
+    get_tcp_collector,
+)
 
 
 class ADSBClient(TcpClient):
@@ -39,7 +35,7 @@ class ADSBClient(TcpClient):
         self._position_failures: dict[str, float] = {}
         self.receiver_lat = receiver_lat
         self.receiver_lon = receiver_lon
-        self._assembly_collector = get_assembly_collector(logger=logging.getLogger(__name__)) if get_assembly_collector else None
+        self._assembly_collector = get_assembly_collector(logger=logging.getLogger(__name__))
         self._first_message_time: dict[str, float] = {}  # Track first message time per ICAO
         self._completed_icaos: set[str] = set()  # Track already-reported completions
         self._timed_out_icaos: set[str] = set()  # Track already-reported timeouts
@@ -157,8 +153,7 @@ class ADSBClient(TcpClient):
             completed_fields.append("velocity")
 
         # Only record completion if all fields are complete (and not already recorded)
-        if (hasattr(self, '_assembly_collector') and self._assembly_collector and
-            len(completed_fields) == len(required_fields) and icao not in self._completed_icaos):
+        if len(completed_fields) == len(required_fields) and icao not in self._completed_icaos:
             assembly_time_ms = elapsed_time * 1000
             self._assembly_collector.record_assembly_complete(
                 icao=icao,
@@ -216,8 +211,7 @@ class ADSBClient(TcpClient):
                         "first_seen": timestamp,
                     }
                     # Track first message time for assembly metrics
-                    if hasattr(self, '_assembly_collector') and self._assembly_collector:
-                        self._first_message_time[icao] = timestamp
+                    self._first_message_time[icao] = timestamp
 
                 entry = self.aircraft_data[icao]
                 first_seen = entry.get("first_seen")
@@ -272,9 +266,11 @@ class ADSBPublisher:
         self._client_thread = None
         self._shutdown_event = threading.Event()
         self.bound_port = None
-        self._tcp_collector = get_tcp_collector(logger=logging.getLogger(__name__)) if get_tcp_collector else None
-        self._system_resource_collector = get_system_resource_collector(logger=logging.getLogger(__name__)) if get_system_resource_collector else None
+        self._tcp_collector = get_tcp_collector(logger=logging.getLogger(__name__))
+        self._system_resource_collector = get_system_resource_collector(logger=logging.getLogger(__name__))
         self._metric_collection_interval = 30  # Collect metrics every 30 seconds
+        # Start CSV logging for TCP metrics
+        self._tcp_collector.start_csv_logging()
         logging.info("Starting ADSBPublisher...")
 
     async def handler(self, websocket) -> None:
@@ -299,14 +295,13 @@ class ADSBPublisher:
                 await asyncio.gather(*[ws.send(data) for ws in self.clients])
 
             # Passively collect TCP and system resource metrics at intervals
-            if hasattr(self, '_tcp_collector') and self._tcp_collector or hasattr(self, '_system_resource_collector') and self._system_resource_collector:
-                current_time = asyncio.get_event_loop().time()
-                if current_time - last_metric_collection >= self._metric_collection_interval:
-                    if self._tcp_collector:
-                        self._tcp_collector.collect()
-                    if self._system_resource_collector:
-                        self._system_resource_collector.collect()
-                    last_metric_collection = current_time
+            current_time = asyncio.get_event_loop().time()
+            if current_time - last_metric_collection >= self._metric_collection_interval:
+                tcp_snapshot = self._tcp_collector.collect()
+                self._system_resource_collector.collect()
+                # Write TCP metrics to CSV file
+                self._tcp_collector.write_csv_snapshot(tcp_snapshot)
+                last_metric_collection = current_time
 
             await asyncio.sleep(self.interval)
 
@@ -353,10 +348,8 @@ class ADSBPublisher:
         Get collected TCP metrics (non-blocking).
 
         Returns:
-            Dictionary with metrics history or None if collector unavailable.
+            Dictionary with metrics history or latest metrics snapshot.
         """
-        if self._tcp_collector is None:
-            return None
         latest = self._tcp_collector.get_latest()
         return latest.__dict__ if latest else None
 
@@ -370,9 +363,6 @@ class ADSBPublisher:
         Returns:
             True if export successful, False otherwise.
         """
-        if self._tcp_collector is None:
-            logging.warning("TCP metrics collector not available")
-            return False
         try:
             self._tcp_collector.export_to_json(file_path)
             return True
@@ -387,6 +377,7 @@ class ADSBPublisher:
         Creates a metrics/ directory and exports TCP, system resource, message assembly metrics with timestamps.
         Also exports incomplete message count information.
         """
+        logging.info("Exporting metrics on shutdown...")
         try:
             # Create metrics directory if it doesn't exist
             metrics_dir = Path.cwd() / "metrics"
@@ -396,39 +387,47 @@ class ADSBPublisher:
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
             # Export TCP metrics if available
-            if hasattr(self, '_tcp_collector') and self._tcp_collector and self._tcp_collector.get_history():
+            tcp_history = self._tcp_collector.get_history()
+            if tcp_history:
                 tcp_metrics_file = metrics_dir / f"publisher_tcp_metrics_{timestamp}.json"
                 self._tcp_collector.export_to_json(str(tcp_metrics_file))
                 logging.info("Publisher TCP metrics exported to %s", tcp_metrics_file)
+            else:
+                logging.debug("No TCP metrics to export")
 
             # Export system resource metrics if available
-            if hasattr(self, '_system_resource_collector') and self._system_resource_collector and self._system_resource_collector.get_history():
+            system_history = self._system_resource_collector.get_history()
+            if system_history:
                 system_metrics_file = metrics_dir / f"publisher_system_metrics_{timestamp}.json"
                 self._system_resource_collector.export_to_json(str(system_metrics_file))
                 logging.info("Publisher system resource metrics exported to %s", system_metrics_file)
+            else:
+                logging.debug("No system resource metrics to export")
 
             # Export message assembly metrics if available
-            if hasattr(self, 'src_client') and self.src_client._assembly_collector and self.src_client._assembly_collector.get_history():
+            assembly_history = self.src_client._assembly_collector.get_history()
+            if assembly_history:
                 assembly_metrics_file = metrics_dir / f"publisher_assembly_metrics_{timestamp}.json"
                 self.src_client._assembly_collector.export_to_json(str(assembly_metrics_file))
-                logging.info("Publisher message assembly metrics exported to %s", assembly_metrics_file)
+                logging.info("Publisher message assembly metrics exported to %s (count: %d)", assembly_metrics_file, len(assembly_history))
+            else:
+                logging.debug("No assembly metrics to export")
 
             # Export incomplete message statistics
-            if hasattr(self, 'src_client'):
-                incomplete_count = self.src_client.get_incomplete_message_count()
-                incomplete_stats = {
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "incomplete_messages_after_timeout": incomplete_count,
-                    "timeout_threshold_seconds": self.src_client.MESSAGE_ASSEMBLY_TIMEOUT_SECONDS,
-                }
-                incomplete_metrics_file = metrics_dir / f"publisher_incomplete_metrics_{timestamp}.json"
-                with open(incomplete_metrics_file, "w") as f:
-                    json.dump(incomplete_stats, f, indent=2)
-                logging.info(
-                    "Publisher incomplete message metrics exported to %s (count: %d)",
-                    incomplete_metrics_file,
-                    incomplete_count,
-                )
+            incomplete_count = self.src_client.get_incomplete_message_count()
+            incomplete_stats = {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "incomplete_messages_after_timeout": incomplete_count,
+                "timeout_threshold_seconds": self.src_client.MESSAGE_ASSEMBLY_TIMEOUT_SECONDS,
+            }
+            incomplete_metrics_file = metrics_dir / f"publisher_incomplete_metrics_{timestamp}.json"
+            with open(incomplete_metrics_file, "w") as f:
+                json.dump(incomplete_stats, f, indent=2)
+            logging.info(
+                "Publisher incomplete message metrics exported to %s (count: %d)",
+                incomplete_metrics_file,
+                incomplete_count,
+            )
 
         except Exception as e:
             logging.warning("Failed to export publisher metrics: %s", e)
@@ -492,9 +491,27 @@ async def main():
 if __name__ == "__main__":
     log_level = os.getenv("ADSB_PUBLISHER_LOG_LEVEL", "DEBUG").upper()
     logging.basicConfig(level=getattr(logging, log_level, logging.DEBUG))
+    
+    publisher_instance = None
+    
+    def signal_handler(signum, frame):
+        """Handle termination signals gracefully."""
+        logging.info("Received signal %d, shutting down...", signum)
+        if publisher_instance:
+            try:
+                publisher_instance._export_metrics_on_shutdown()
+            except Exception as e:
+                logging.error("Error exporting metrics: %s", e)
+        raise KeyboardInterrupt()
+    
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
     try:
         publisher_instance = asyncio.run(main())
-    except Exception:
+    except Exception as e:
+        logging.debug("Exception during main: %s", e)
         publisher_instance = None
     finally:
         # Export metrics on shutdown

@@ -66,6 +66,11 @@ def test_adsb_client_handle_messages(monkeypatch):
     client.aircraft_data = {}
     client._cpr_states = {}
     client._position_failures = {}
+    client._first_message_time = {}
+    client._completed_icaos = set()
+    client._timed_out_icaos = set()
+    client._incomplete_count = 0
+    client._assembly_collector = SimpleNamespace(record_assembly_complete=lambda **kwargs: None)
     client.receiver_lat = 33.0
     client.receiver_lon = -97.0
 
@@ -137,6 +142,9 @@ def test_publish_data_without_clients(monkeypatch):
     publisher.clients = set()
     publisher.interval = 0
     publisher.src_client = SimpleNamespace(aircraft_data={})
+    publisher._metric_collection_interval = 30
+    publisher._tcp_collector = SimpleNamespace(collect=lambda: None)
+    publisher._system_resource_collector = SimpleNamespace(collect=lambda: None)
 
     async def fake_sleep(_):
         raise asyncio.CancelledError
