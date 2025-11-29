@@ -10,9 +10,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from flask import Blueprint, current_app, jsonify, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    render_template,
+    request,
+    url_for,
+)
 from jinja2.runtime import Undefined
-
 
 adsb_bp = Blueprint("adsb", __name__, template_folder="templates")
 

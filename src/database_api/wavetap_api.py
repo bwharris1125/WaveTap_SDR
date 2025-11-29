@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from flask import Flask, render_template, url_for
-
 from adsb_module import adsb_bp
-
+from flask import Flask, render_template, url_for
 
 app = Flask(__name__)
 app.register_blueprint(adsb_bp, url_prefix="/adsb")
@@ -120,5 +118,4 @@ def other_dashboard():
     )
 
 
-if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+if __name__ == "__main__":    app.run(debug=True, host="0.0.0.0", port=5000)

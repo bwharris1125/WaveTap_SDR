@@ -6,6 +6,7 @@ without affecting the operation of existing services. All collection is passive
 and non-intrusive.
 """
 
+import csv
 import json
 import logging
 import platform
@@ -49,56 +50,31 @@ class DroppedTCPPacketsCollector:
         self._lock = Lock()
         self._last_collected_dropped = 0
         self._delta_dropped = 0
+        self._csv_file: Optional[Path] = None
+        self._csv_handle: Optional[object] = None
+        self._csv_writer: Optional[csv.DictWriter] = None
 
     @staticmethod
     def _read_tcp_stats_from_proc() -> tuple[int, int, int]:
         """
-        Read TCP statistics from /proc/net/tcp.
+        Read TCP statistics from /proc/net/tcp and /proc/net/netstat.
 
         Returns:
             Tuple of (dropped_packets, retransmitted_packets, outoforder_packets)
             Returns (0, 0, 0) if unable to read the statistics.
         """
-        tcp_stats_path = Path("/proc/net/tcp")
-        if not tcp_stats_path.exists():
-            return 0, 0, 0
+        dropped = 0
+        retransmitted = 0
+        outoforder = 0
 
         try:
-            with open(tcp_stats_path, "r") as f:
-                content = f.read()
-
-            # Parse /proc/net/tcp format
-            # Each line represents a connection with format:
-            # sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode
-            dropped = 0
-            retransmitted = 0
-            outoforder = 0
-
-            lines = content.strip().split("\n")
-            # Skip header
-            if lines:
-                lines = lines[1:]
-
-            for line in lines:
-                fields = line.split()
-                if len(fields) >= 10:
-                    # tr field (index 6) contains retransmit info
-                    tr_field = fields[6]
-                    # When retransmit is active, format is "retransmit_timeout:timer_value"
-                    if ":" in tr_field:
-                        try:
-                            retransmit_val = int(tr_field.split(":")[0], 16)
-                            retransmitted += retransmit_val
-                        except (ValueError, IndexError):
-                            pass
-
-            # Try to read from /proc/net/netstat for more detailed stats
+            # Read from /proc/net/netstat for comprehensive TCP statistics
             netstat_path = Path("/proc/net/netstat")
             if netstat_path.exists():
                 with open(netstat_path, "r") as f:
                     netstat_lines = f.readlines()
 
-                # Look for TcpExt section
+                # Look for TcpExt section which has cumulative counters
                 tcp_ext_idx = None
                 for i, line in enumerate(netstat_lines):
                     if line.startswith("TcpExt:"):
@@ -112,31 +88,20 @@ class DroppedTCPPacketsCollector:
                     header_fields = header_line.split()
                     data_fields = data_line.split()
 
-                    # Find TCPListen, ListenDrops, ListenOverflows, TCPDropped, etc.
+                    # Parse cumulative counters from TcpExt section
                     for field_idx, field_name in enumerate(header_fields[1:], 1):
-                        if field_name == "TCPListen" and field_idx < len(data_fields):
+                        if field_idx < len(data_fields):
                             try:
-                                dropped += int(data_fields[field_idx])
-                            except (ValueError, IndexError):
-                                pass
-                        elif field_name == "ListenDrops" and field_idx < len(data_fields):
-                            try:
-                                dropped += int(data_fields[field_idx])
-                            except (ValueError, IndexError):
-                                pass
-                        elif field_name == "ListenOverflows" and field_idx < len(data_fields):
-                            try:
-                                dropped += int(data_fields[field_idx])
-                            except (ValueError, IndexError):
-                                pass
-                        elif field_name == "TCPDropped" and field_idx < len(data_fields):
-                            try:
-                                dropped += int(data_fields[field_idx])
-                            except (ValueError, IndexError):
-                                pass
-                        elif field_name == "TCPOFOQueue" and field_idx < len(data_fields):
-                            try:
-                                outoforder += int(data_fields[field_idx])
+                                value = int(data_fields[field_idx])
+                                # Dropped packets indicators (cumulative counters)
+                                if field_name in ("TCPListen", "ListenDrops", "ListenOverflows", "TCPDropped", "SyncookiesFailed", "TCPAbortOnClose", "TCPAbortOnMemory", "TCPAbortOnTimeout"):
+                                    dropped += value
+                                # Retransmitted packets (cumulative counter)
+                                elif field_name == "TCPRetransFail":
+                                    retransmitted += value
+                                # Out-of-order received packets (cumulative counter, not queue size)
+                                elif field_name == "TCPOFORecv":
+                                    outoforder += value
                             except (ValueError, IndexError):
                                 pass
 
@@ -191,6 +156,60 @@ class DroppedTCPPacketsCollector:
         """Get the most recent metric snapshot."""
         with self._lock:
             return self.metrics_history[-1] if self.metrics_history else None
+
+    def start_csv_logging(self, file_path: Optional[str] = None) -> str:
+        """
+        Start logging metrics to a CSV file.
+
+        Args:
+            file_path: Path to the CSV file. If None, uses default in metrics/ directory.
+
+        Returns:
+            Path to the CSV file being used.
+        """
+        if file_path is None:
+            metrics_dir = Path.cwd() / "metrics"
+            metrics_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            file_path = str(metrics_dir / f"publisher_tcp_metrics_{timestamp}.csv")
+
+        self._csv_file = Path(file_path)
+
+        # Open file and create writer
+        file_exists = self._csv_file.exists()
+        try:
+            self._csv_handle = open(self._csv_file, "a", newline="")
+            self._csv_writer = csv.DictWriter(
+                self._csv_handle,
+                fieldnames=["timestamp", "dropped_packets", "retransmitted_packets", "outoforder_packets"]
+            )
+            if not file_exists:
+                self._csv_writer.writeheader()
+                self._csv_handle.flush()
+            self.logger.info("CSV logging started: %s", file_path)
+        except Exception as e:
+            self.logger.error("Failed to start CSV logging: %s", e)
+            self._csv_writer = None
+            self._csv_handle = None
+
+        return file_path
+
+    def write_csv_snapshot(self, snapshot: TCPMetricSnapshot) -> None:
+        """
+        Write a metric snapshot to the CSV file immediately.
+
+        Args:
+            snapshot: The TCPMetricSnapshot to write.
+        """
+        if self._csv_writer is None or self._csv_handle is None:
+            return
+
+        try:
+            self._csv_writer.writerow(asdict(snapshot))
+            # Flush after each write to ensure data is written even on unexpected shutdown
+            self._csv_handle.flush()
+        except Exception as e:
+            self.logger.error("Failed to write CSV snapshot: %s", e)
 
     def get_delta_dropped(self) -> int:
         """Get the delta (change) in dropped packets since last collection."""

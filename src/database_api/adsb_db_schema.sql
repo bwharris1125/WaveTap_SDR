@@ -2,7 +2,9 @@ CREATE TABLE IF NOT EXISTS aircraft (
     icao TEXT PRIMARY KEY,
     callsign TEXT,
     first_seen REAL,
-    last_seen REAL
+    last_seen REAL,
+    assembly_time_ms REAL,
+    stale_cpr_count INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS flight_session (

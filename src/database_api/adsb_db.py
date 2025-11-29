@@ -8,12 +8,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-
 _EXPECTED_PATH_COLUMNS = {
     "velocity": "REAL",
     "track": "REAL",
     "vertical_rate": "REAL",
     "type": "TEXT",
+}
+
+_EXPECTED_AIRCRAFT_COLUMNS = {
+    "assembly_time_ms": "REAL",
+    "stale_cpr_count": "INTEGER",
 }
 
 
@@ -92,6 +96,7 @@ class DBWorker(threading.Thread):
                 sql = schema_path.read_text(encoding="utf-8")
                 self.conn.executescript(sql)
                 self._ensure_path_columns()
+                self._ensure_aircraft_columns()
                 return
             except Exception as e:
                 logging.exception("Failed to read/execute schema file %s: %s", schema_path, e)
@@ -102,7 +107,9 @@ class DBWorker(threading.Thread):
             icao TEXT PRIMARY KEY,
             callsign TEXT,
             first_seen REAL,
-            last_seen REAL
+            last_seen REAL,
+            assembly_time_ms REAL,
+            stale_cpr_count INTEGER
         );
         CREATE TABLE IF NOT EXISTS flight_session (
             id TEXT PRIMARY KEY,
@@ -132,6 +139,7 @@ class DBWorker(threading.Thread):
         """
         self.conn.executescript(s)
         self._ensure_path_columns()
+        self._ensure_aircraft_columns()
 
     def _ensure_path_columns(self):
         try:
@@ -155,14 +163,37 @@ class DBWorker(threading.Thread):
         except sqlite3.Error:
             pass
 
+    def _ensure_aircraft_columns(self):
+        """Ensure aircraft table has all expected columns for new metrics."""
+        try:
+            rows = self.conn.execute("PRAGMA table_info(aircraft)").fetchall()
+        except sqlite3.Error as exc:
+            logging.warning("Unable to inspect aircraft table schema: %s", exc)
+            return
+
+        if not rows:
+            return
+
+        existing = {row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in rows}
+        for column, sql_type in _EXPECTED_AIRCRAFT_COLUMNS.items():
+            if column not in existing:
+                try:
+                    self.conn.execute(f"ALTER TABLE aircraft ADD COLUMN {column} {sql_type}")
+                except sqlite3.Error as exc:
+                    logging.warning("Failed to add %s column to aircraft table: %s", column, exc)
+        try:
+            self.conn.commit()
+        except sqlite3.Error:
+            pass
+
     def _handle(self, task, cur):
         typ = task[0]
         if typ == "upsert_aircraft":
-            _, icao, callsign, first_seen, last_seen = task
+            _, icao, callsign, first_seen, last_seen, assembly_time_ms, stale_cpr_count = task
             cur.execute(
-                "INSERT INTO aircraft (icao, callsign, first_seen, last_seen) VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(icao) DO UPDATE SET callsign=?, last_seen=?",
-                (icao, callsign, first_seen, last_seen, callsign, last_seen)
+                "INSERT INTO aircraft (icao, callsign, first_seen, last_seen, assembly_time_ms, stale_cpr_count) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(icao) DO UPDATE SET callsign=?, last_seen=?, assembly_time_ms=?, stale_cpr_count=?",
+                (icao, callsign, first_seen, last_seen, assembly_time_ms, stale_cpr_count, callsign, last_seen, assembly_time_ms, stale_cpr_count)
             )
         elif typ == "start_session":
             _, session_id, icao, start_ts = task
