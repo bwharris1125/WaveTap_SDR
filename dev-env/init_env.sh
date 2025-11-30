@@ -10,7 +10,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 echo "Project root: $PROJECT_ROOT"
 
 # --- Install system dependencies required by pyrtlsdr (Debian/Ubuntu) ---
-if command -v apt-get >/dev/null 2>&1; then
+if command -v apt-get install >/dev/null 2>&1; then
 	echo "Checking system packages required for pyrtlsdr..."
 	PKGS=(rtl-sdr librtlsdr-dev librtlsdr2 libusb-1.0-0-dev usbutils pkg-config build-essential)
 
