@@ -68,6 +68,11 @@ class TestComponentLogging:
 
         assert log_dir.exists()
         assert list(log_dir.glob("test_nested_*.log"))
+        # Verify logger is functional
+        logger.info("Test message")
+        log_files = list(log_dir.glob("test_nested_*.log"))
+        assert len(log_files) == 1
+        assert "Test message" in log_files[0].read_text()
 
     def test_setup_per_component_logging(self, tmp_path):
         """Verify setup_per_component_logging creates multiple loggers."""

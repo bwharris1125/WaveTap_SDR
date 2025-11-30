@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import logging
+import logging  # noqa: F401
 import os
 
-from adsb_module import adsb_bp
 from flask import Flask, render_template, url_for
+
+from database_api.adsb_module import adsb_bp
 
 app = Flask(__name__)
 app.register_blueprint(adsb_bp, url_prefix="/adsb")
