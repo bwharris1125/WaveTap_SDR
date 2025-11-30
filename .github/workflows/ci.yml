@@ -161,7 +161,7 @@ jobs:
     name: Generate Metrics Dashboard
     runs-on: ubuntu-latest
     needs: [test, quality]
-    if: always()
+    if: success()
     permissions:
       contents: write
     strategy:
@@ -193,6 +193,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: coverage-xml-${{ matrix.python-version }}
+        continue-on-error: true
 
       - name: Download bandit report
         uses: actions/download-artifact@v4
