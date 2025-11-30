@@ -24,28 +24,21 @@ def run_command(cmd, shell=False):
 
 
 def extract_coverage():
-    """Extract coverage percentage from pytest."""
-    # Run tests with coverage
-    run_command("pytest --cov=src --cov-report=json --cov-report=term "
-                "-q > /tmp/test_output.txt 2>&1", shell=True)
+    """Extract coverage percentage from coverage.xml."""
     try:
-        with open(".coverage") as f:
-            # If .coverage exists, try to get data from it
-            pass
-        # Try to read from the JSON coverage report
-        with open(".coverage.json") as f:
-            data = json.load(f)
-            return round(data.get("totals", {}).get("percent_covered", 0), 2)
+        # First, try to read from the uploaded coverage.xml file
+        import xml.etree.ElementTree as ET
+        tree = ET.parse("coverage.xml")
+        root = tree.getroot()
+        # The line-rate attribute contains the coverage percentage (0.0-1.0)
+        line_rate = float(root.get("line-rate", 0))
+        return round(line_rate * 100, 2)
     except FileNotFoundError:
-        # Fallback: run coverage json specifically
-        run_command("coverage json -o coverage.json", shell=True)
-        try:
-            with open("coverage.json") as f:
-                data = json.load(f)
-                return round(data.get("totals", {}).get("percent_covered", 0), 2)
-        except Exception as e:
-            print(f"Coverage extraction failed: {e}")
-            return 0.0
+        print("coverage.xml not found")
+        return 0.0
+    except Exception as e:
+        print(f"Coverage extraction failed: {e}")
+        return 0.0
 
 
 def extract_complexity():
