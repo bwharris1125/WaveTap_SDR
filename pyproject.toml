@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "wavetap"
 version = "0.1.0"
 description = "Modular Python SDR Framework"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
 where = ["src"]
