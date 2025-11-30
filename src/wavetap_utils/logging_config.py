@@ -67,6 +67,7 @@ def setup_component_logging(
     # Create logger
     logger = logging.getLogger(component_name)
     logger.setLevel(level)
+    logger.propagate = False  # Critical: prevent messages from going to root logger
 
     # Remove existing handlers to avoid duplicates
     logger.handlers.clear()
@@ -85,14 +86,18 @@ def setup_component_logging(
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # Also configure root logger to ensure all logging goes to console
+    # Also configure root logger with file handler so logging.info/debug/etc calls are captured
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
-    if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler) for h in root_logger.handlers):
-        root_console_handler = logging.StreamHandler()
-        root_console_handler.setLevel(level)
-        root_console_handler.setFormatter(formatter)
-        root_logger.addHandler(root_console_handler)
+    root_logger.handlers.clear()
+    root_file_handler = logging.FileHandler(log_file)
+    root_file_handler.setLevel(level)
+    root_file_handler.setFormatter(formatter)
+    root_logger.addHandler(root_file_handler)
+    root_console_handler = logging.StreamHandler()
+    root_console_handler.setLevel(level)
+    root_console_handler.setFormatter(formatter)
+    root_logger.addHandler(root_console_handler)
 
     logger.info(f"Logging configured for {component_name} component")
     logger.info(f"Log file: {log_file}")
