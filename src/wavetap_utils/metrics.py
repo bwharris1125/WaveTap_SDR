@@ -162,14 +162,14 @@ class DroppedTCPPacketsCollector:
         Start logging metrics to a CSV file.
 
         Args:
-            file_path: Path to the CSV file. If None, uses default in metrics/ directory.
+            file_path: Path to the CSV file. If None, uses default in tmp/metrics/ directory.
 
         Returns:
             Path to the CSV file being used.
         """
         if file_path is None:
-            metrics_dir = Path.cwd() / "metrics"
-            metrics_dir.mkdir(exist_ok=True)
+            metrics_dir = Path.cwd() / "tmp" / "metrics"
+            metrics_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             file_path = str(metrics_dir / f"publisher_tcp_metrics_{timestamp}.csv")
 

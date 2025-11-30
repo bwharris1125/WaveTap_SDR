@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from adsb_module import adsb_bp
+import logging  # noqa: F401
+import os
+
 from flask import Flask, render_template, url_for
+
+from database_api.adsb_module import adsb_bp
 
 app = Flask(__name__)
 app.register_blueprint(adsb_bp, url_prefix="/adsb")
@@ -118,4 +122,17 @@ def other_dashboard():
     )
 
 
-if __name__ == "__main__":    app.run(debug=True, host="0.0.0.0", port=5000)
+if __name__ == "__main__":
+    # Configure logging for wavetap_api
+    log_dir = os.environ.get("ADSB_LOG_DIR", "tmp/logs")
+    log_level = os.environ.get("WAVETAP_API_LOG_LEVEL", "INFO")
+
+    from wavetap_utils.logging_config import setup_component_logging
+    logger = setup_component_logging("wavetap_api", log_level=log_level, log_dir=log_dir)
+
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
+    port = int(os.environ.get("FLASK_PORT", 5000))
+    host = os.environ.get("FLASK_HOST", "0.0.0.0")
+
+    logger.info(f"Starting WaveTap API on {host}:{port}")
+    app.run(debug=debug_mode, host=host, port=port)

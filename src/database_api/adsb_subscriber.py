@@ -12,6 +12,7 @@ import websockets
 from websockets import exceptions as ws_exc
 
 from database_api.adsb_db import DBWorker
+from wavetap_utils.network_metrics import get_network_collector
 
 
 class ADSBSubscriber:
@@ -24,6 +25,7 @@ class ADSBSubscriber:
         self.db_worker = None
         self.active_sessions = {}
         self.last_saved_ts = {}
+        self.metrics_collector = get_network_collector()
 
     def setup_db(self, db_path=None):
         """Initialize DBWorker for database operations."""
@@ -68,6 +70,8 @@ class ADSBSubscriber:
                             break
                         try:
                             received = json.loads(data)
+                            # Record network metric for each message received
+                            self.metrics_collector.record_packet()
                             if isinstance(received, dict):
                                 self.aircraft_data = received
                                 logging.debug(
@@ -80,6 +84,8 @@ class ADSBSubscriber:
                                     type(received),
                                 )
                         except Exception as exc:
+                            # Record failed message as dropped packet
+                            self.metrics_collector.record_dropped_packet()
                             logging.warning("Failed to decode message: %s", exc)
             except asyncio.CancelledError:
                 raise
@@ -223,6 +229,11 @@ async def main():
     subscriber = ADSBSubscriber(args.uri)
     subscriber.setup_db(args.db)
 
+    # Start network metrics collection
+    subscriber.metrics_collector.start_csv_logging()
+    subscriber.metrics_collector.start_periodic_logging(interval_seconds=10.0)
+    logging.info("Network metrics collection started")
+
     async def periodic_db_save():
         while True:
             await subscriber.save_to_db()
@@ -235,8 +246,23 @@ async def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    log_dir = os.environ.get("ADSB_LOG_DIR", "tmp/logs")
+    log_level = os.environ.get("ADSB_SUBSCRIBER_LOG_LEVEL", "DEBUG")
+
+    # Import logging config after os is available
+    from wavetap_utils.logging_config import setup_component_logging
+    setup_component_logging("subscriber", log_level=log_level, log_dir=log_dir)
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         print("Subscriber stopped by user.")
+    finally:
+        # Cleanup network metrics
+        try:
+            metrics_collector = get_network_collector()
+            metrics_collector.stop_periodic_logging()
+            metrics_collector.stop_csv_logging()
+            logging.info("Network metrics collection stopped")
+        except Exception as e:
+            logging.error("Error stopping metrics: %s", e)

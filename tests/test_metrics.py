@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from utilities.metrics import (
+from wavetap_utils.metrics import (
     ADSBMessageAssemblyCollector,
     DroppedTCPPacketsCollector,
     MessageAssemblySnapshot,
@@ -237,16 +237,16 @@ class TestGlobalCollector:
     def test_get_tcp_collector_creates_instance(self):
         """Test that get_tcp_collector creates an instance."""
         # Reset global state
-        import utilities.metrics
-        utilities.metrics._global_tcp_collector = None
+        import wavetap_utils.metrics
+        wavetap_utils.metrics._global_tcp_collector = None
 
         collector = get_tcp_collector()
         assert isinstance(collector, DroppedTCPPacketsCollector)
 
     def test_get_tcp_collector_returns_same_instance(self):
         """Test that get_tcp_collector returns the same instance."""
-        import utilities.metrics
-        utilities.metrics._global_tcp_collector = None
+        import wavetap_utils.metrics
+        wavetap_utils.metrics._global_tcp_collector = None
 
         collector1 = get_tcp_collector()
         collector2 = get_tcp_collector()
@@ -255,8 +255,8 @@ class TestGlobalCollector:
 
     def test_get_tcp_collector_with_logger(self):
         """Test get_tcp_collector with a custom logger."""
-        import utilities.metrics
-        utilities.metrics._global_tcp_collector = None
+        import wavetap_utils.metrics
+        wavetap_utils.metrics._global_tcp_collector = None
 
         mock_logger = MagicMock()
         collector = get_tcp_collector(logger=mock_logger)
@@ -394,16 +394,16 @@ class TestGlobalAssemblyCollector:
 
     def test_get_assembly_collector_creates_instance(self):
         """Test that get_assembly_collector creates an instance."""
-        import utilities.metrics
-        utilities.metrics._global_assembly_collector = None
+        import wavetap_utils.metrics
+        wavetap_utils.metrics._global_assembly_collector = None
 
         collector = get_assembly_collector()
         assert isinstance(collector, ADSBMessageAssemblyCollector)
 
     def test_get_assembly_collector_returns_same_instance(self):
         """Test that get_assembly_collector returns the same instance."""
-        import utilities.metrics
-        utilities.metrics._global_assembly_collector = None
+        import wavetap_utils.metrics
+        wavetap_utils.metrics._global_assembly_collector = None
 
         collector1 = get_assembly_collector()
         collector2 = get_assembly_collector()
@@ -563,16 +563,16 @@ class TestGlobalSystemResourceCollector:
 
     def test_get_system_resource_collector_creates_instance(self):
         """Test that get_system_resource_collector creates an instance."""
-        import utilities.metrics
-        utilities.metrics._global_system_resource_collector = None
+        import wavetap_utils.metrics
+        wavetap_utils.metrics._global_system_resource_collector = None
 
         collector = get_system_resource_collector()
         assert isinstance(collector, SystemResourceCollector)
 
     def test_get_system_resource_collector_returns_same_instance(self):
         """Test that get_system_resource_collector returns the same instance."""
-        import utilities.metrics
-        utilities.metrics._global_system_resource_collector = None
+        import wavetap_utils.metrics
+        wavetap_utils.metrics._global_system_resource_collector = None
 
         collector1 = get_system_resource_collector()
         collector2 = get_system_resource_collector()

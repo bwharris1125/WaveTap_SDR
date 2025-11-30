@@ -218,6 +218,40 @@ class ADSBPublisher:
         self._shutdown_event = threading.Event()
         self.bound_port = None
         logging.info("Starting ADSBPublisher...")
+        self._verify_dump1090(host, src_port)
+
+    def _verify_dump1090(self, host: str, port: int) -> None:
+        """
+        Verify that dump1090 is reachable and sending messages.
+        Starts a temporary client thread to check for incoming messages.
+        """
+        print(f"Checking for dump1090 on {host}:{port}...")
+
+        # Create a temporary client to test the connection
+        temp_client = ADSBClient(host, port, "raw")
+        initial_count = len(temp_client.aircraft_data)
+
+        # Start the client in a temporary thread
+        temp_thread = threading.Thread(target=temp_client.run, daemon=True)
+        temp_thread.start()
+
+        # Wait a few seconds to see if we receive any messages
+        check_duration = 5
+        check_interval = 0.5
+        elapsed = 0
+
+        while elapsed < check_duration:
+            current_count = len(temp_client.aircraft_data)
+            if current_count > initial_count:
+                print(f"✓ Successfully detected dump1090 on {host}:{port}")
+                logging.info(f"dump1090 connection verified - received {current_count} aircraft")
+                return
+            threading.Event().wait(check_interval)
+            elapsed += check_interval
+
+        print(f"WARNING: No dump1090 messages detected on {host}:{port}")
+        print("  Please verify that dump1090 is running and accessible at this address.")
+        logging.warning(f"dump1090 verification failed - no messages received from {host}:{port}")
 
     async def handler(self, websocket) -> None:
         """
@@ -332,5 +366,10 @@ async def main():
 
 if __name__ == "__main__":
     log_level = os.getenv("ADSB_PUBLISHER_LOG_LEVEL", "DEBUG").upper()
-    logging.basicConfig(level=getattr(logging, log_level, logging.DEBUG))
+    log_dir = os.getenv("ADSB_LOG_DIR", "tmp/logs")
+
+    # Import logging config after os is available
+    from wavetap_utils.logging_config import setup_component_logging
+    setup_component_logging("publisher", log_level=log_level, log_dir=log_dir)
+
     asyncio.run(main())

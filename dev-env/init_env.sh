@@ -68,7 +68,7 @@ source .venv/bin/activate
 
 echo "Upgrading pip and installing Python packages..."
 pip install --upgrade pip
-pip install --upgrade pip
 pip install -r requirements.txt
+pip install -e "$PROJECT_ROOT"
 
 echo "Setup complete. RTL-SDR development environment is ready."
