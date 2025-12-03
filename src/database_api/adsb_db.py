@@ -20,6 +20,8 @@ _EXPECTED_AIRCRAFT_COLUMNS = {
     "stale_cpr_count": "INTEGER",
 }
 
+_SESSION_TIMEOUT = 300  # 5 minutes in seconds
+
 
 @dataclass
 class AircraftState:
@@ -59,6 +61,12 @@ class DBWorker(threading.Thread):
             try:
                 task = self.q.get(timeout=self._poll_rate)
             except queue.Empty:
+                # Check for timed-out sessions when queue is empty
+                try:
+                    self._check_session_timeouts(cur, time.time())
+                    self.conn.commit()
+                except Exception as e:
+                    logging.exception("Session timeout check failed: %s", e)
                 continue
             try:
                 self._handle(task, cur)
@@ -185,6 +193,30 @@ class DBWorker(threading.Thread):
             self.conn.commit()
         except sqlite3.Error:
             pass
+
+    def _check_session_timeouts(self, cur, current_time):
+        """Check for sessions with no activity and mark them as ended."""
+        try:
+            rows = cur.execute(
+                "SELECT id FROM flight_session WHERE end_time IS NULL"
+            ).fetchall()
+            for row in rows:
+                session_id = row[0] if not isinstance(row, sqlite3.Row) else row["id"]
+                # Get the most recent path timestamp for this session
+                path_row = cur.execute(
+                    "SELECT MAX(ts) FROM path WHERE session_id=?",
+                    (session_id,)
+                ).fetchone()
+                last_ts = path_row[0] if path_row else None
+
+                if last_ts is not None and current_time - last_ts > _SESSION_TIMEOUT:
+                    cur.execute(
+                        "UPDATE flight_session SET end_time=? WHERE id=?",
+                        (last_ts, session_id)
+                    )
+                    logging.debug("Session %s timed out due to inactivity (%.1f seconds)", session_id, current_time - last_ts)
+        except sqlite3.Error as exc:
+            logging.warning("Failed to check session timeouts: %s", exc)
 
     def _handle(self, task, cur):
         typ = task[0]
