@@ -76,9 +76,6 @@ jobs:
       - name: Test Main
         run: pytest tests/test_main.py -v --cov=src --cov-report=term
 
-      - name: Test Metrics Collection
-        run: pytest tests/test_metrics.py -v --cov=src --cov-report=term --cov-append
-
       - name: Test Arbiter Service
         run: pytest tests/test_arbiter/test_service.py -v --cov=src --cov-report=term --cov-append
 

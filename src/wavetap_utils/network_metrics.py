@@ -4,6 +4,8 @@ Network metrics collection utility for WaveTap.
 This module provides utilities for capturing network statistics such as packet counts,
 dropped packets, and out-of-order packets. Metrics are periodically written to CSV files
 to ensure data persistence even if the application shuts down unexpectedly.
+
+TODO REFACTOR & INCORPORATE WEBSOCKETS TO CAPTURE ACTUAL METRICS
 """
 
 import csv
