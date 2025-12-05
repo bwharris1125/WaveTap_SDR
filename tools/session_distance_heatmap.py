@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Draw assembly-time heat map over geography for first seen points."""
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -27,10 +28,11 @@ ASSEMBLY_COLOR_RANGE: Optional[Tuple[int, int]] = (0, 150_000)
 
 # Update these coordinates to match the recording device location.
 DEVICE_LOCATION = {
-    "lat": 32.887342,      # degrees north
-    "lon": -97.527519,     # degrees east (negative for west)
-    "alt_m": 221.0,   # meters above mean sea level
+    "lat": 32.000000,      # degrees north
+    "lon": -97.000000,     # degrees east (negative for west)
+    "alt_m": 200.0,   # meters above mean sea level
 }
+logging.debug(f"Device location set to: {DEVICE_LOCATION}")
 
 RECEIVER_MARKER_STYLE = {
     "marker": "*",
