@@ -52,6 +52,6 @@ htmlcov/
 *.db-shm
 
 # Ignore CI/CD & metrics artifacts
-/.ruff_cache
-/.venv-ci
-/tmp
+**.ruff_cache
+**.venv-ci
+**tmp
