@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from wavetap_utils.network_metrics import (
+from wavetap_utils.reliability_metrics import (
     NetworkMetricsCollector,
     NetworkMetricSnapshot,
     get_network_collector,
@@ -292,18 +292,18 @@ class TestGlobalNetworkCollector:
 
     def test_get_network_collector_creates_instance(self):
         """Test that get_network_collector creates an instance."""
-        import wavetap_utils.network_metrics
+        import wavetap_utils.reliability_metrics
 
-        wavetap_utils.network_metrics._global_network_collector = None
+        wavetap_utils.reliability_metrics._global_network_collector = None
 
         collector = get_network_collector()
         assert isinstance(collector, NetworkMetricsCollector)
 
     def test_get_network_collector_returns_same_instance(self):
         """Test that get_network_collector returns the same instance."""
-        import wavetap_utils.network_metrics
+        import wavetap_utils.reliability_metrics
 
-        wavetap_utils.network_metrics._global_network_collector = None
+        wavetap_utils.reliability_metrics._global_network_collector = None
 
         collector1 = get_network_collector()
         collector2 = get_network_collector()
@@ -312,9 +312,9 @@ class TestGlobalNetworkCollector:
 
     def test_get_network_collector_with_logger(self):
         """Test get_network_collector with a custom logger."""
-        import wavetap_utils.network_metrics
+        import wavetap_utils.reliability_metrics
 
-        wavetap_utils.network_metrics._global_network_collector = None
+        wavetap_utils.reliability_metrics._global_network_collector = None
 
         mock_logger = MagicMock()
         collector = get_network_collector(logger=mock_logger)

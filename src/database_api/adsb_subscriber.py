@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import asyncio
 import json
 import logging
@@ -12,7 +14,7 @@ import websockets
 from websockets import exceptions as ws_exc
 
 from database_api.adsb_db import DBWorker
-from wavetap_utils.network_metrics import get_network_collector
+from wavetap_utils.reliability_metrics import get_network_collector
 
 
 class ADSBSubscriber:
@@ -26,6 +28,9 @@ class ADSBSubscriber:
         self.active_sessions = {}
         self.last_saved_ts = {}
         self.metrics_collector = get_network_collector()
+        self._last_message_time = 0
+        self._connection_state = "disconnected"
+        self._db_queue_depth = 0
 
     def setup_db(self, db_path=None):
         """Initialize DBWorker for database operations."""
@@ -172,6 +177,32 @@ class ADSBSubscriber:
                 velocity.get("type"),
             ))
             logging.debug("Inserted path for %s at %s", icao, ts_iso)
+
+    def get_health_status(self) -> dict:
+        now = time.time()
+        message_age = now - self._last_message_time if self._last_message_time else float('inf')
+        db_healthy = self.db_worker and self.db_worker.is_alive() if self.db_worker else False
+
+        # Check queue depth (requires adding to DBWorker)
+        queue_size = self.db_worker.q.qsize() if self.db_worker else 0
+
+        healthy = (
+            self._connection_state == "connected" and
+            message_age < 60 and
+            db_healthy and
+            queue_size < 1000  # Threshold for queue backup
+        )
+
+        return {
+            "status": "healthy" if healthy else "degraded",
+            "timestamp": now,
+            "connection_state": self._connection_state,
+            "last_message_age_seconds": message_age,
+            "aircraft_cached": len(self.aircraft_data),
+            "db_worker_alive": db_healthy,
+            "db_queue_depth": queue_size,
+            "active_sessions": len(self.active_sessions),
+        }
 
 
 def print_aircraft_data(collector, interval: int = 3) -> None:

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """WaveTap API entry point aggregating SDR capabilities."""
 
 from __future__ import annotations

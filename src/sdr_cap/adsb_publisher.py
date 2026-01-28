@@ -1,8 +1,11 @@
+#!/usr/bin/env python3
+
 import asyncio
 import json
 import logging
 import math
 import os
+import time
 import threading
 
 import pyModeS as pms
@@ -309,6 +312,42 @@ class ADSBPublisher:
         # Optionally join the client thread if needed
         if self._client_thread and self._client_thread.is_alive():
             self._client_thread.join(timeout=2)
+
+    def get_health_status(self) -> dict:
+        """Return health status for monitoring."""
+        now = time.time()
+        client_alive = (self._client_thread and
+                       self._client_thread.is_alive())
+
+        # Check last message time
+        last_update_times = [
+            entry.get("last_update", 0)
+            for entry in self.src_client.aircraft_data.values()
+        ]
+        last_message = max(last_update_times) if last_update_times else 0
+        message_age = now - last_message if last_message else float('inf')
+
+        healthy = (
+            client_alive and
+            message_age < 60  # No data for 60s = unhealthy
+        )
+
+        return {
+            "status": "healthy" if healthy else "degraded",
+            "timestamp": now,
+            "client_thread_alive": client_alive,
+            "connected_clients": len(self.clients),
+            "aircraft_tracked": len(self.src_client.aircraft_data),
+            "last_message_age_seconds": message_age,
+            "uptime_seconds": now - self._start_time,
+        }
+
+
+# Add HTTP endpoint (minimal Flask server or expose via WebSocket)
+async def health_handler(self, websocket):
+    """Dedicated health check endpoint on separate port or path."""
+    health = self.get_health_status()
+    await websocket.send(json.dumps(health))
 
 
 def _env_float(name: str, default: float | None = None) -> float | None:
