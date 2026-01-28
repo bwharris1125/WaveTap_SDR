@@ -107,10 +107,10 @@ class TestHealthCheck:
             component_name="test",
         )
         hc = MockHealthCheck("test", result)
-        
+
         # First check
         hc.check()
-        
+
         # Get cached result immediately
         cached = hc.get_cached_result(max_age_seconds=5.0)
         assert cached is not None
@@ -124,10 +124,10 @@ class TestHealthCheck:
             component_name="test",
         )
         hc = MockHealthCheck("test", result)
-        
+
         # First check
         hc.check()
-        
+
         # Wait and get stale cached result
         time.sleep(0.1)
         cached = hc.get_cached_result(max_age_seconds=0.05)
@@ -141,7 +141,7 @@ class TestHealthCheck:
             component_name="test",
         )
         hc = MockHealthCheck("test", result)
-        
+
         cached = hc.get_cached_result()
         assert cached is None
 
@@ -156,7 +156,7 @@ class TestPublisherHealthCheck:
         publisher._client_thread = Mock()
         publisher._client_thread.is_alive.return_value = True
         publisher.clients = {Mock(), Mock()}  # 2 clients
-        
+
         # Mock aircraft data with recent updates
         now = time.time()
         publisher.src_client = Mock()
@@ -182,7 +182,7 @@ class TestPublisherHealthCheck:
         publisher._client_thread = Mock()
         publisher._client_thread.is_alive.return_value = True
         publisher.clients = {Mock()}
-        
+
         # Old message data
         old_time = time.time() - 90  # 90 seconds ago
         publisher.src_client = Mock()
@@ -223,7 +223,7 @@ class TestSubscriberHealthCheck:
         subscriber._last_message_time = time.time() - 5  # 5 seconds ago
         subscriber.aircraft_data = {"ABC": {}, "DEF": {}}
         subscriber.active_sessions = {"ABC": "sess1", "DEF": "sess2"}
-        
+
         subscriber.db_worker = Mock()
         subscriber.db_worker.is_alive.return_value = True
         subscriber.db_worker.q = Mock()
@@ -247,7 +247,7 @@ class TestSubscriberHealthCheck:
         subscriber._last_message_time = time.time() - 5
         subscriber.aircraft_data = {}
         subscriber.active_sessions = {}
-        
+
         subscriber.db_worker = Mock()
         subscriber.db_worker.is_alive.return_value = True
         subscriber.db_worker.q = Mock()
@@ -267,7 +267,7 @@ class TestSubscriberHealthCheck:
         subscriber._last_message_time = time.time()
         subscriber.aircraft_data = {}
         subscriber.active_sessions = {}
-        
+
         subscriber.db_worker = None
 
         hc = SubscriberHealthCheck(subscriber)
@@ -328,10 +328,10 @@ class TestDatabaseHealthCheck:
     def test_database_with_file_checks(self, tmp_path):
         """Test database health check with file-based database."""
         import os
-        
+
         db_file = tmp_path / "test.db"
         db_file.write_text("test")
-        
+
         db_worker = Mock()
         db_worker.is_alive.return_value = True
         db_worker.q = Mock()
@@ -361,7 +361,7 @@ class TestSystemHealthCheck:
             timestamp=time.time(),
             component_name="comp2",
         )
-        
+
         comp1_check = MockHealthCheck("comp1", comp1_result)
         comp2_check = MockHealthCheck("comp2", comp2_result)
 
@@ -387,7 +387,7 @@ class TestSystemHealthCheck:
             timestamp=time.time(),
             component_name="comp2",
         )
-        
+
         comp1_check = MockHealthCheck("comp1", comp1_result)
         comp2_check = MockHealthCheck("comp2", comp2_result)
 
@@ -410,7 +410,7 @@ class TestSystemHealthCheck:
             timestamp=time.time(),
             component_name="comp2",
         )
-        
+
         comp1_check = MockHealthCheck("comp1", comp1_result)
         comp2_check = MockHealthCheck("comp2", comp2_result)
 

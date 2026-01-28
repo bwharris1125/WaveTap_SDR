@@ -155,11 +155,11 @@ class TestAvailabilityTracker:
     def test_multiple_outages(self):
         """Test recording multiple outages."""
         tracker = AvailabilityTracker()
-        
+
         tracker.record_outage_start("comp1", "reason1")
         time.sleep(0.01)
         tracker.record_outage_end()
-        
+
         tracker.record_outage_start("comp2", "reason2")
         time.sleep(0.01)
         tracker.record_outage_end()
@@ -175,7 +175,7 @@ class TestAvailabilityTracker:
         tracker.record_outage_end()
 
         metrics = tracker.get_metrics()
-        
+
         assert isinstance(metrics, AvailabilityMetrics)
         assert metrics.total_outages == 1
         assert metrics.downtime_seconds > 0
@@ -191,10 +191,10 @@ class TestAvailabilityTracker:
         exported_path = tracker.export_to_json(str(output_file))
 
         assert Path(exported_path).exists()
-        
+
         with open(exported_path) as f:
             data = json.load(f)
-        
+
         assert "timestamp" in data
         assert "uptime_seconds" in data
         assert "downtime_seconds" in data
@@ -317,10 +317,10 @@ class TestDataQualityTracker:
         exported_path = tracker.export_to_json(str(output_file))
 
         assert Path(exported_path).exists()
-        
+
         with open(exported_path) as f:
             data = json.load(f)
-        
+
         assert "messages_received" in data
         assert "message_success_rate_percent" in data
         assert "assembly_success_rate_percent" in data
@@ -340,7 +340,7 @@ class TestPerformanceMetrics:
     def test_latency_deque_limit(self):
         """Test that latency deque respects maxlen."""
         metrics = PerformanceMetrics()
-        
+
         # Add more than 1000
         for i in range(1500):
             metrics.add_message_latency(i)
@@ -447,10 +447,10 @@ class TestPerformanceTracker:
         exported_path = tracker.export_to_json(str(output_file))
 
         assert Path(exported_path).exists()
-        
+
         with open(exported_path) as f:
             data = json.load(f)
-        
+
         assert "timestamp" in data
         assert "message_latency" in data
         assert "db_write_latency" in data
